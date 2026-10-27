@@ -35,16 +35,16 @@ const ficticio = {
     NUM_DPTOS: 10, DIA_VENCIMIENTO: 5, SALDO_INICIAL_FONDO: 4097.67
   },
   deptos: [
-    { unidad: 101, propietario: 'Juan Demo' },
-    { unidad: 102, propietario: 'María Ejemplo' },
-    { unidad: 201, propietario: 'Pedro Prueba' },
-    { unidad: 202, propietario: 'Lucía Sample' },
-    { unidad: 301, propietario: 'Carlos Ficticio' },
-    { unidad: 302, propietario: 'Sofía Modelo' },
-    { unidad: 401, propietario: 'Diego Ensayo' },
-    { unidad: 402, propietario: 'Elena Dummy' },
-    { unidad: 501, propietario: 'Miguel Test' },
-    { unidad: 502, propietario: 'Laura Muestra' }
+    { unidad: 101, propietario: 'Juan Demo', correo: 'dpto101@ejemplo.com' },
+    { unidad: 102, propietario: 'María Ejemplo', correo: 'dpto102@ejemplo.com, inquilino102@ejemplo.com' },
+    { unidad: 201, propietario: 'Pedro Prueba', correo: 'dpto201@ejemplo.com' },
+    { unidad: 202, propietario: 'Lucía Sample', correo: 'dpto202@ejemplo.com' },
+    { unidad: 301, propietario: 'Carlos Ficticio', correo: 'dpto301@ejemplo.com' },
+    { unidad: 302, propietario: 'Sofía Modelo', correo: 'dpto302@ejemplo.com' },
+    { unidad: 401, propietario: 'Diego Ensayo', correo: 'dpto401@ejemplo.com' },
+    { unidad: 402, propietario: 'Elena Dummy', correo: 'dpto402@ejemplo.com' },
+    { unidad: 501, propietario: 'Miguel Test', correo: 'dpto501@ejemplo.com' },
+    { unidad: 502, propietario: 'Laura Muestra', correo: 'dpto502@ejemplo.com' }
   ],
   // Mismos números que setiembre real (para que el cálculo de ejemplo coincida), nombres inventados
   lecturas: [

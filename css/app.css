@@ -138,3 +138,33 @@ footer.app {
   .lista-gastos .fila, .lista-ajustes .fila { grid-template-columns: 1fr 1fr; }
   .lista-gastos .fila .concepto, .lista-ajustes .fila .concepto { grid-column: 1 / -1; }
 }
+
+/* ---- Enviar por correo ---- */
+.sub-titulo { color: var(--teal); font-size: 16px; margin: 22px 0 6px; }
+.lista-envio { display: grid; gap: 8px; }
+.envio-fila { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  border: 1px solid var(--borde); border-radius: 10px; padding: 10px; background: #fff; }
+.envio-fila.enviado { background: #f3faf3; border-color: #b7dfb9; }
+.envio-info { flex: 1 1 260px; min-width: 0; }
+.envio-dpto { font-weight: 700; font-size: 15px; }
+.envio-total { color: #5b5fe0; margin-left: 6px; }
+.envio-correo { margin-top: 6px; padding: 8px 10px !important; font-size: 14px !important; width: 100%;
+  border: 1px solid var(--borde); border-radius: 8px; }
+.envio-botones { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 0 1 auto; }
+.envio-btn { background: #5b5fe0; color: #fff; min-width: 120px; justify-content: center; }
+.envio-btn.hecho { background: var(--ok); }
+.envio-pdf { text-decoration: none; }
+.envio-links { width: 100%; font-size: 12px; color: #789; }
+.enlace { background: none; border: 0; padding: 0; color: var(--teal); text-decoration: underline; cursor: pointer; font-size: 12px; font-family: inherit; }
+.correo-prev { border: 1px solid var(--borde); border-radius: 10px; background: #fff; overflow: hidden; }
+.correo-prev-cab { background: #f6f7fb; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--borde); line-height: 1.6; word-break: break-word; }
+.correo-prev-cuerpo { padding: 12px 16px; overflow-x: auto; }
+.toast { position: fixed; left: 12px; right: 12px; bottom: 20px; margin: 0 auto; max-width: 560px; transform: translateY(160%);
+  background: #263238; color: #fff; padding: 12px 16px; border-radius: 10px; font-size: 14px; line-height: 1.4;
+  box-shadow: 0 6px 24px rgba(0,0,0,.25); transition: transform .25s; z-index: 1000; }
+.toast.visible { transform: translateY(0); }
+.toast a { color: #9fd3ff; }
+@media (max-width: 640px) {
+  .envio-botones { width: 100%; }
+  .envio-btn, .envio-pdf { flex: 1 1 0; justify-content: center; }
+}

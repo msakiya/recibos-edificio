@@ -14,6 +14,18 @@ Página web **estática** (sin servidor) para generar los recibos mensuales de u
 4. **Paso 3:** arrastra las fotos de los medidores y los recibos de luz/agua (JPG, PNG o PDF). Pulsa **Generar recibos**.
 5. Se descarga un ZIP con un PDF por departamento y el Excel actualizado. **Guarda ese Excel**: es el que subirás el próximo mes.
 
+## Enviar los recibos por correo
+
+Después de generar, aparece la lista de los departamentos con su total, un botón **✉ Enviar** y **⬇ PDF**.
+
+1. Escribe los correos en la pestaña **Departamentos** del Excel (columna *Correo*; varios correos se separan con coma).
+2. Toca **✉ Enviar**: se copia el mensaje con formato y se abre Gmail con el destinatario y el asunto
+   (`Recibo de Gastos Comunes - <Mes> <Año> - Dpto <N>`).
+3. Pega el mensaje (Ctrl+V o mantener presionado › Pegar), adjunta el PDF descargado con **⬇ PDF** y envía.
+
+¿No usas Gmail? Usa **Otra app de correo** (abre tu app de correo con el mensaje en texto simple).
+La página no envía correos sola: no hay servidor.
+
 ## Cálculo (validado)
 
 Misma lógica que la hoja de Google anterior. Ejemplo setiembre 2026:
@@ -39,6 +51,9 @@ node tests/test_calculo.js
 
 # punta a punta (Chrome + Playwright; necesita fotos en /workspace/recibos_web_test)
 python3 tests/test_e2e.py
+
+# envío por correo (portapapeles + URL de Gmail)
+python3 tests/test_correo.py
 ```
 
 Librerías incluidas en `vendor/` (sin CDN): SheetJS 0.20.3, jsPDF 2.5.2, JSZip 3.10.1, pdf.js 3.11.174, html2canvas 1.4.1.

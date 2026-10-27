@@ -15,7 +15,7 @@ var HOJAS = {
 };
 var ENCABEZADOS = {
   Config: ['Clave (no cambiar)', 'Valor (editable)', 'Descripción'],
-  Departamentos: ['Unidad', 'Propietario', 'Celular / WhatsApp', 'Correo', 'Notas'],
+  Departamentos: ['Unidad', 'Propietario', 'Celular / WhatsApp', 'Correo(s) del propietario (varios: separar con coma)', 'Notas'],
   Lecturas: ['Mes (AAAA-MM)', 'Unidad', 'Lectura anterior (m³)', 'Lectura actual (m³)', 'Consumo m³', 'Foto del medidor (archivo)', 'Observación'],
   Servicios: ['Mes (AAAA-MM)', 'Fecha de emisión', 'Fecha de vencimiento', 'Agua: importe total recibo', 'Agua: m³ facturados', 'Luz: importe total recibo', 'Archivos', 'Notas'],
   Gastos: ['Mes (AAAA-MM)', '#', 'Concepto (tal como sale en el recibo)', 'Monto total edificio', 'Tipo', '¿Copiar al mes siguiente?', 'Notas'],
@@ -36,6 +36,7 @@ var CLAVES_CONFIG = [
   ['CUENTA_BANCARIA', 'Número de cuenta'],
   ['CCI', 'Código de cuenta interbancario'],
   ['NOTA_PAGO', 'Nota que sale junto a los datos de pago'],
+  ['CORREO_NOMBRE_EDIFICIO', 'Opcional: nombre en el encabezado del correo (vacío = "Edificio" + nombre del edificio)'],
   ['EMPRESA_AGUA', 'Empresa de agua (ej. Sedapal)'],
   ['EMPRESA_LUZ', 'Empresa de luz (ej. Luz del Sur)'],
   ['NUM_DPTOS', 'Número de departamentos entre los que se dividen los gastos (vacío = los de la pestaña Departamentos)'],
@@ -93,9 +94,13 @@ function leerLibro(wb) {
     });
   } else errores.push('Falta la pestaña "Config" (datos del edificio).');
   if ((r = filas(wb, HOJAS.DEPTOS))) {
+    // Columna de correo por encabezado ("Correo", "Email"...); Excel antiguo sin esa columna = sin correo
+    var colCorreo = -1;
+    (r[0] || []).forEach(function (h, i) { if (colCorreo < 0 && /correo|e-?mail/.test(sinAcentos(h))) colCorreo = i; });
     r.slice(1).forEach(function (f) {
       var u = aUnidad(f[0]);
-      if (u) datos.deptos.push({ unidad: u, propietario: String(f[1] || '').trim(), telefono: String(f[2] || '').trim(), correo: String(f[3] || '').trim() });
+      if (u) datos.deptos.push({ unidad: u, propietario: String(f[1] || '').trim(), telefono: String(f[2] || '').trim(),
+        correo: colCorreo >= 0 ? String(f[colCorreo] || '').trim() : '' });
     });
   } else errores.push('Falta la pestaña "Departamentos".');
   if (!datos.deptos.length && !errores.length) errores.push('La pestaña "Departamentos" está vacía: escribe los números de departamento (101, 102…) y sus propietarios.');
@@ -324,7 +329,7 @@ var TEXTO_INSTRUCCIONES = [
   [''],
   ['Pestañas:'],
   ['  Config: datos del edificio (presidente, tesorero, banco, cuenta, CCI, día de vencimiento...). Cambia solo la columna B.'],
-  ['  Departamentos: un renglón por departamento (unidad y propietario).'],
+  ['  Departamentos: un renglón por departamento (unidad, propietario y correo; si hay varios correos, sepáralos con coma).'],
   ['  Lecturas, Servicios, Gastos, Ajustes, Fondo: la página las llena mes a mes. También puedes escribir aquí un mes antes de abrir la página.'],
   ['  Gastos - Tipo: FIJO, EXTRA (no se repite), FONDO (aporte al fondo de contingencia), LUZ (= recibo de luz), AGUA_COMUN (se calcula solo).'],
   ['  Ajustes: cargos (+) o créditos a favor (−) de un dpto en un mes.'],

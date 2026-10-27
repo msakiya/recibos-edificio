@@ -437,7 +437,8 @@ function ejecutarGeneracion(aplicado) {
       '<tr><td colspan="2"><b>Total facturado</b></td><td class="m"><b>' + esc(Calculo.fmtSoles(res.totalFacturado)) + '</b></td></tr>' +
       '<tr><td colspan="2">Fondo de contingencia</td><td class="m">' + esc(Calculo.fmtSoles(res.fondo.saldo)) + '</td></tr>' +
       '</tbody></table></div>' +
-      '<div class="botones"><button type="button" class="boton primario" id="btnReDescargar">⬇ Volver a descargar el ZIP</button></div>';
+      '<div class="botones"><button type="button" class="boton primario" id="btnReDescargar">⬇ Volver a descargar el ZIP</button></div>' +
+      '<div id="panelEnvio"></div>';
     $('btnReDescargar').onclick = function () {
       var a2 = document.createElement('a');
       a2.href = URL.createObjectURL(out.blob); a2.download = out.nombre;
@@ -446,6 +447,7 @@ function ejecutarGeneracion(aplicado) {
     };
     // Actualiza estado.datos con el mes escrito (para generar de nuevo o cambiar de mes)
     estado.datos = aplicado.datos;
+    pintarEnvio(out, res);
   }).catch(function (e) {
     $('btnGenerar').disabled = false;
     mostrar('panelProgreso', false);
@@ -454,6 +456,133 @@ function ejecutarGeneracion(aplicado) {
     console.error(e);
   });
 }
+
+
+/* ---------------- Enviar por correo (semi-manual, sin servidor) ---------------- */
+var enviados = {};      // solo durante esta sesión
+var correosEscritos = {};
+var urlsPdf = [];
+
+function toast(html, ms) {
+  var t = $('toast');
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
+  t.innerHTML = html; t.classList.add('visible');
+  clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove('visible'); }, ms || 7000);
+}
+
+/** Copia el cuerpo con formato (HTML) y en texto. Devuelve Promise<boolean>. */
+function copiarCorreo(c) {
+  function respaldo() {
+    // Copia la vista previa "renderizada" seleccionándola (mantiene el formato al pegar)
+    var div = document.createElement('div');
+    div.contentEditable = 'true';
+    div.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;background:#fff';
+    div.innerHTML = c.html;
+    document.body.appendChild(div);
+    var sel = window.getSelection(), rango = document.createRange();
+    rango.selectNodeContents(div); sel.removeAllRanges(); sel.addRange(rango);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    sel.removeAllRanges(); div.remove();
+    return ok;
+  }
+  if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+    try {
+      var item = new ClipboardItem({
+        'text/html': new Blob([c.html], { type: 'text/html' }),
+        'text/plain': new Blob([c.texto], { type: 'text/plain' })
+      });
+      return navigator.clipboard.write([item]).then(function () { return true; }, function () { return respaldo(); });
+    } catch (e) { return Promise.resolve(respaldo()); }
+  }
+  return Promise.resolve(respaldo());
+}
+
+function pintarEnvio(out, res) {
+  var panel = $('panelEnvio'); if (!panel) return;
+  urlsPdf.forEach(function (u) { URL.revokeObjectURL(u); }); urlsPdf = [];
+  var cfg = estado.datos.config || {};
+  var mesTexto = res.nombreMes + ' ' + res.anio;
+  function correoDe(unidad) {
+    if (correosEscritos[unidad] !== undefined) return correosEscritos[unidad];
+    var d = estado.datos.deptos.filter(function (x) { return Calculo.mismaUnidad(x.unidad, unidad); })[0];
+    return d ? d.correo || '' : '';
+  }
+  function armar(r) { return Correo.armar(cfg, r.unidad, mesTexto, Calculo.fmtSoles(r.total), correoDe(r.unidad)); }
+  var sinCorreo = out.resumen.filter(function (r) { return !Correo.listaCorreos(correoDe(r.unidad)).length; }).length;
+
+  panel.innerHTML =
+    '<h3 class="sub-titulo">✉ Enviar los recibos por correo</h3>' +
+    '<p class="ayuda">Para cada departamento: <b>1)</b> toca <b>Enviar</b> (se copia el mensaje y se abre Gmail con el asunto y el correo ya puestos), ' +
+    '<b>2)</b> pega el mensaje en el cuerpo (Ctrl+V o mantener presionado › Pegar), <b>3)</b> adjunta el PDF que descargaste con <b>⬇ PDF</b> y envía.</p>' +
+    (sinCorreo ? '<div class="banner aviso">' + sinCorreo + ' departamento(s) sin correo en el Excel. Puedes escribirlo aquí abajo; ' +
+      'para que quede guardado, anótalo en la pestaña <b>Departamentos</b> (columna Correo) de tu Excel.</div>' : '') +
+    '<div class="lista-envio">' + out.resumen.map(function (r, i) {
+      var url = URL.createObjectURL(r.blob); urlsPdf.push(url);
+      var c = armar(r);
+      return '<div class="envio-fila' + (enviados[r.unidad] ? ' enviado' : '') + '" data-i="' + i + '">' +
+        '<div class="envio-info"><div class="envio-dpto">Dpto ' + esc(r.unidad) + ' <span class="envio-total">' + esc(Calculo.fmtSoles(r.total)) + '</span></div>' +
+        '<div class="mini">' + esc(r.propietario || '') + '</div>' +
+        '<input type="email" class="envio-correo" inputmode="email" autocomplete="off" placeholder="sin correo · escríbelo aquí" value="' + esc(correoDe(r.unidad)) + '">' +
+        '<div class="envio-estado mini">' + (c.correos.length ? '' : '<span class="pill falta">sin correo</span>') + '</div></div>' +
+        '<div class="envio-botones">' +
+          '<button type="button" class="boton envio-btn' + (enviados[r.unidad] ? ' hecho' : '') + '">' + (enviados[r.unidad] ? 'Enviado ✓' : '✉ Enviar') + '</button>' +
+          '<a class="boton sec envio-pdf" href="' + url + '" download="' + esc(r.nombre) + '">⬇ PDF</a>' +
+          '<div class="envio-links"><button type="button" class="enlace envio-ver">Ver mensaje</button> · ' +
+          '<button type="button" class="enlace envio-copiar">Copiar mensaje</button> · ' +
+          '<a class="enlace envio-mailto" href="' + esc(c.mailto) + '">Otra app de correo</a></div>' +
+        '</div></div>';
+    }).join('') + '</div>' +
+    '<h3 class="sub-titulo">Vista previa del correo</h3>' +
+    '<div class="correo-prev"><div class="correo-prev-cab"><span class="mini">Para:</span> <b id="prevPara"></b><br>' +
+    '<span class="mini">Asunto:</span> <b id="prevAsunto"></b></div><div id="prevCuerpo" class="correo-prev-cuerpo"></div></div>';
+
+  function mostrarPrev(r) {
+    var c = armar(r);
+    $('prevPara').textContent = c.correos.length ? c.correos.join(', ') : '(sin correo)';
+    $('prevAsunto').textContent = c.asunto;
+    $('prevCuerpo').innerHTML = c.html;
+  }
+  mostrarPrev(out.resumen[0]);
+
+  panel.querySelectorAll('.envio-fila').forEach(function (fila) {
+    var r = out.resumen[+fila.getAttribute('data-i')];
+    var inp = fila.querySelector('.envio-correo');
+    inp.addEventListener('input', function () {
+      correosEscritos[r.unidad] = inp.value;
+      var c = armar(r);
+      fila.querySelector('.envio-mailto').href = c.mailto;
+      fila.querySelector('.envio-estado').innerHTML = c.correos.length ? '' : (inp.value.trim() ? '<span class="pill aviso">correo no válido</span>' : '<span class="pill falta">sin correo</span>');
+    });
+    fila.querySelector('.envio-ver').onclick = function () { mostrarPrev(r); $('prevCuerpo').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+    fila.querySelector('.envio-copiar').onclick = function () {
+      copiarCorreo(armar(r)).then(function (ok) {
+        toast(ok ? '✔ Mensaje copiado. Pégalo en el cuerpo del correo.' : 'No se pudo copiar. Selecciona la vista previa y cópiala a mano.');
+      });
+      mostrarPrev(r);
+    };
+    fila.querySelector('.envio-mailto').addEventListener('click', function () { marcar(); });
+    function marcar() {
+      enviados[r.unidad] = true;
+      fila.classList.add('enviado');
+      var b = fila.querySelector('.envio-btn'); b.textContent = 'Enviado ✓'; b.classList.add('hecho');
+    }
+    fila.querySelector('.envio-btn').onclick = function () {
+      var c = armar(r);
+      mostrarPrev(r);
+      var copia = copiarCorreo(c);              // dentro del clic (permiso del portapapeles)
+      var w = window.open(c.gmail, '_blank');   // también dentro del clic (evita bloqueo de ventanas)
+      if (w) { try { w.opener = null; } catch (e) {} }
+      copia.then(function (ok) {
+        toast((ok ? '✔ Mensaje copiado. ' : '⚠ No se pudo copiar el mensaje (usa “Copiar mensaje”). ') +
+          '<b>Pega el mensaje (Ctrl+V / mantener presionado › Pegar) y adjunta el PDF</b> “' + esc(r.nombre) + '”.' +
+          (w ? '' : '<br>El navegador bloqueó la ventana de Gmail: <a href="' + esc(c.gmail) + '" target="_blank" rel="noopener">ábrela aquí</a>.'), 10000);
+      });
+      marcar();
+    };
+  });
+}
+window.__pintarEnvio = pintarEnvio;
 
 // Expone para pruebas (Playwright)
 window.__RecibosApp = {

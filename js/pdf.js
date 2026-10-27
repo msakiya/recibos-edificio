@@ -109,7 +109,7 @@ function generarZip(datos, res, archivos, excelBytes, onProgreso) {
                  foto: (archivos && archivos.medidor && archivos.medidor[u.unidad]) || '' };
     return generarUno(res, u.unidad, cfg, imgs).then(function (pdf) {
       zip.file(pdf.nombre, pdf.bytes);
-      resumen.push({ unidad: pdf.unidad, propietario: pdf.propietario, total: pdf.total, nombre: pdf.nombre });
+      resumen.push({ unidad: pdf.unidad, propietario: pdf.propietario, total: pdf.total, nombre: pdf.nombre, blob: pdf.blob });
       return siguiente();
     });
   }
