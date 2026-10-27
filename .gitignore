@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+*.log
+.idea/
+.vscode/
+# Capturas y previews de prueba (pueden tener datos reales; no van al repo público)
+captura-*.png
+preview-*.png

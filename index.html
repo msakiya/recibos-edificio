@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Genera los recibos mensuales de tu edificio desde un Excel, todo en tu navegador. Gratis, sin servidor.">
+<title>Recibos del edificio</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23e07b39'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='36' font-family='Arial' fill='white' font-weight='700'%3ER%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+<header class="app">
+  <div class="logo-mark">R</div>
+  <div>
+    <h1>Recibos del edificio</h1>
+    <p>Todo se calcula en tu celular o computadora. Nada se envía a internet.</p>
+  </div>
+</header>
+
+<main>
+  <nav class="pasos" aria-label="Pasos">
+    <button type="button" class="paso-tab activo" data-paso="1" id="tab1"><span class="n">1</span> Excel</button>
+    <button type="button" class="paso-tab" data-paso="2" id="tab2" disabled><span class="n">2</span> Datos del mes</button>
+    <button type="button" class="paso-tab" data-paso="3" id="tab3" disabled><span class="n">3</span> Fotos y generar</button>
+  </nav>
+
+  <!-- ========== PASO 1 ========== -->
+  <section class="tarjeta" id="paso1">
+    <h2>Paso 1 · Abre tu Excel</h2>
+    <p class="ayuda">Tu Excel es la “base de datos” del edificio (configuración, departamentos, lecturas y gastos). Si es la primera vez, descarga la plantilla de ejemplo, edítala con tus datos y guárdala en tu Drive o en tu computadora.</p>
+
+    <div class="drop" id="dropExcel" tabindex="0" role="button" aria-label="Elegir archivo Excel">
+      <strong>Arrastra tu Excel aquí</strong>
+      <span>o toca para elegirlo · .xlsx</span>
+      <input type="file" id="fileExcel" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+    </div>
+    <div id="excelInfo" class="oculto" style="margin-top:12px"></div>
+
+    <div class="botones">
+      <a class="boton sec" href="plantilla-ejemplo.xlsx" download>⬇ Descargar plantilla de ejemplo</a>
+      <button type="button" class="boton sec" id="btnBlanco">⬇ Descargar Excel en blanco</button>
+    </div>
+    <p class="mini" style="margin-top:10px">La plantilla de ejemplo usa datos ficticios (nombres inventados). Tú reemplázalos con los de tu edificio. El logo es opcional: puedes subirlo en el paso 2.</p>
+  </section>
+
+  <!-- ========== PASO 2 ========== -->
+  <section class="tarjeta oculto" id="paso2">
+    <h2>Paso 2 · Datos del mes</h2>
+    <p class="ayuda">Revisa o completa las lecturas, los montos de agua y luz, y la lista de gastos. Lo que no cambie (gastos fijos) ya viene copiado del mes anterior.</p>
+
+    <div class="chip-mes">Mes: <select id="selMes" aria-label="Mes a generar"></select></div>
+    <div id="avisoMes" class="banner info oculto"></div>
+
+    <h3 style="color:var(--teal);font-size:15px;margin:18px 0 8px">Recibos del edificio</h3>
+    <div class="rejilla 3">
+      <div>
+        <label class="campo" for="aguaImporte">Agua · monto total (S/)</label>
+        <input type="text" id="aguaImporte" inputmode="decimal" placeholder="ej. 679.40">
+      </div>
+      <div>
+        <label class="campo" for="aguaM3">Agua · m³ facturados</label>
+        <input type="text" id="aguaM3" inputmode="decimal" placeholder="ej. 154">
+      </div>
+      <div>
+        <label class="campo" for="luzImporte">Luz · monto total (S/)</label>
+        <input type="text" id="luzImporte" inputmode="decimal" placeholder="ej. 510.40">
+      </div>
+      <div>
+        <label class="campo" for="emision">Fecha de emisión</label>
+        <input type="date" id="emision">
+      </div>
+      <div>
+        <label class="campo" for="vencimiento">Fecha de vencimiento</label>
+        <input type="date" id="vencimiento">
+      </div>
+      <div>
+        <label class="campo" for="logoFile">Logo del edificio (opcional)</label>
+        <input type="file" id="logoFile" accept="image/*">
+        <div id="logoPreview" class="mini" style="margin-top:4px"></div>
+      </div>
+    </div>
+
+    <h3 style="color:var(--teal);font-size:15px;margin:18px 0 8px">Lecturas de agua por departamento</h3>
+    <div class="tabla-wrap">
+      <table class="datos" id="tablaLecturas">
+        <thead><tr><th>Dpto</th><th>Propietario</th><th>Anterior</th><th>Actual</th><th>Consumo</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h3 style="color:var(--teal);font-size:15px;margin:18px 0 8px">Gastos del mes</h3>
+    <p class="mini">Tipos: FIJO (se copia), EXTRA (solo este mes), FONDO (aporte al fondo), LUZ y AGUA_COMUN (se calculan solos: déjalos en blanco).</p>
+    <div class="lista-gastos" id="listaGastos"></div>
+    <button type="button" class="boton sec" id="btnAddGasto">＋ Agregar gasto</button>
+
+    <h3 style="color:var(--teal);font-size:15px;margin:18px 0 8px">Ajustes / créditos (opcional)</h3>
+    <p class="mini">Un crédito a favor se escribe con signo negativo (ej. −5).</p>
+    <div class="lista-ajustes" id="listaAjustes"></div>
+    <button type="button" class="boton sec" id="btnAddAjuste">＋ Agregar ajuste</button>
+
+    <h3 style="color:var(--teal);font-size:15px;margin:18px 0 8px">Fondo de contingencia</h3>
+    <div class="rejilla 2">
+      <div>
+        <label class="campo" for="fondoAnterior">Saldo anterior (S/)</label>
+        <input type="text" id="fondoAnterior" inputmode="decimal">
+      </div>
+      <div>
+        <label class="campo" for="fondoGastos">Gastos pagados con el fondo este mes (S/)</label>
+        <input type="text" id="fondoGastos" inputmode="decimal" placeholder="0">
+      </div>
+      <div style="grid-column:1/-1">
+        <label class="campo" for="fondoDetalle">Detalle (si hubo gasto del fondo)</label>
+        <input type="text" id="fondoDetalle" placeholder="ej. reparación de bomba">
+      </div>
+    </div>
+
+    <div class="botones">
+      <button type="button" class="boton sec" id="btnVolver1">← Volver</button>
+      <button type="button" class="boton primario" id="btnAPaso3">Continuar → Fotos y generar</button>
+    </div>
+  </section>
+
+  <!-- ========== PASO 3 ========== -->
+  <section class="tarjeta oculto" id="paso3">
+    <h2>Paso 3 · Fotos y generar</h2>
+    <p class="ayuda">Arrastra juntas las fotos de los medidores, los comprobantes de pago (opcional) y los recibos de agua y luz del edificio (JPG, PNG o PDF). Si el nombre tiene el número del dpto (101.jpg, “Dpto 102”), se asignan solas. Si no, elígelo a mano.</p>
+
+    <div class="drop" id="dropFotos" tabindex="0" role="button">
+      <strong>Arrastra aquí todas las fotos y PDFs</strong>
+      <span>o toca para elegir varios archivos</span>
+      <input type="file" id="fileFotos" accept="image/*,.pdf,application/pdf" multiple>
+    </div>
+    <div id="listaArchivos" style="margin-top:12px"></div>
+    <div id="estadoArchivos" class="banner info" style="margin-top:8px">Aún no hay fotos.</div>
+
+    <div class="botones">
+      <button type="button" class="boton sec" id="btnVolver2">← Volver a datos</button>
+      <button type="button" class="boton naranja" id="btnGenerar">▶ Generar recibos (ZIP)</button>
+    </div>
+
+    <div id="panelRevision" class="oculto" style="margin-top:14px"></div>
+    <div id="panelProgreso" class="oculto" style="margin-top:14px">
+      <div class="banner info" id="txtProgreso">Preparando…</div>
+      <div class="progreso"><span id="barraProgreso"></span></div>
+    </div>
+    <div id="panelResultado" class="oculto" style="margin-top:14px"></div>
+  </section>
+</main>
+
+<footer class="app">
+  Todo el cálculo y los PDF se hacen en tu navegador. No hay servidor ni cuenta.<br>
+  Si actualizas el Excel, vuelve a subirlo aquí el próximo mes.
+</footer>
+
+<script src="vendor/xlsx-0.20.3.full.min.js"></script>
+<script src="vendor/jspdf-2.5.2.umd.min.js"></script>
+<script src="vendor/jszip-3.10.1.min.js"></script>
+<script src="vendor/html2canvas-1.4.1.min.js"></script>
+<script src="vendor/pdfjs-3.11.174-legacy.min.js"></script>
+<script>
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs-3.11.174-legacy.worker.min.js';
+  }
+</script>
+<script src="js/calculo.js"></script>
+<script src="js/excel.js"></script>
+<script src="js/recibo-html.js"></script>
+<script src="js/media.js"></script>
+<script src="js/pdf.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
