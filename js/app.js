@@ -100,34 +100,8 @@ function cargarExcel(files) {
 }
 setupDrop('dropExcel', 'fileExcel', cargarExcel);
 
-$('btnBlanco').onclick = function () {
-  var base = {
-    config: {
-      EDIFICIO_NOMBRE: '', DIRECCION_LINEA_1: '', DIRECCION_LINEA_2: '',
-      PRESIDENTE_NOMBRE: '', PRESIDENTE_CELULAR: '', TESORERO_NOMBRE: '', TESORERO_CELULAR: '',
-      BANCO: '', CUENTA_BANCARIA: '', CCI: '',
-      NOTA_PAGO: 'Por favor, envíe su comprobante de pago al tesorero vía WhatsApp indicando su número de departamento.',
-      EMPRESA_AGUA: 'Sedapal', EMPRESA_LUZ: 'Luz del Sur', NUM_DPTOS: 10, DIA_VENCIMIENTO: 5, SALDO_INICIAL_FONDO: 0
-    },
-    deptos: [101, 102, 201, 202, 301, 302, 401, 402, 501, 502].map(function (u) { return { unidad: u, propietario: '' }; }),
-    lecturas: [], servicios: [], gastos: [
-      { mes: '1970-01', num: 1, concepto: 'Salario del personal', monto: 0, tipo: 'FIJO', copiar: 'SÍ' },
-      { mes: '1970-01', num: 2, concepto: 'Consumo de luz', monto: '', tipo: 'LUZ', copiar: 'SÍ' },
-      { mes: '1970-01', num: 3, concepto: 'Mantenimiento de ascensor', monto: 0, tipo: 'FIJO', copiar: 'SÍ' },
-      { mes: '1970-01', num: 4, concepto: 'Jardinero / Mantenimiento de áreas verdes', monto: 0, tipo: 'FIJO', copiar: 'SÍ' },
-      { mes: '1970-01', num: 5, concepto: 'Agua común', monto: '', tipo: 'AGUA_COMUN', copiar: 'SÍ' },
-      { mes: '1970-01', num: 6, concepto: 'Fondo de contingencia', monto: 800, tipo: 'FONDO', copiar: 'SÍ' },
-      { mes: '1970-01', num: 7, concepto: 'Recarga de celular conserje', monto: 0, tipo: 'FIJO', copiar: 'SÍ' },
-      { mes: '1970-01', num: 8, concepto: 'Domingos - días', monto: 0, tipo: 'FIJO', copiar: 'SÍ' },
-      { mes: '1970-01', num: 9, concepto: 'Materiales de limpieza', monto: 0, tipo: 'FIJO', copiar: 'SÍ' }
-    ], ajustes: [], pagos: [], fondo: []
-  };
-  // Historial vacío; la pestaña "Mes a facturar" trae el mes actual con la lista de gastos modelo
-  var b = Excel.prepararBorrador(base, Excel.hoyISO().slice(0, 7));
-  b.servicios.emision = '';
-  var wb = Excel.libroNuevo(Object.assign({}, base, { gastos: [] }), { borrador: b });
-  XLSX.writeFile(wb, 'Base de datos - Edificio (en blanco).xlsx');
-};
+// "Excel de ejemplo" y "Excel en blanco" son archivos fijos del sitio (plantilla-ejemplo.xlsx / plantilla-en-blanco.xlsx), con formato.
+
 
 /* ---------------- Resumen del mes (solo lectura, todo sale del Excel) ---------------- */
 $('tab1').onclick = function () { irA(1); };

@@ -8,6 +8,8 @@ Página web **estática** (sin servidor) para generar los recibos mensuales de u
 
 ## Cómo usarla
 
+En la página hay dos descargas: **Excel de ejemplo** (todas las celdas con números de muestra inventados; las amarillas son las que se llenan cada mes) y **Excel en blanco** (misma estructura, vacía).
+
 1. **Cada mes, en el Excel:** llena la pestaña **“Mes a facturar”** (es la primera):
    - B4 mes (ej. `2026-10`), B5 importe del recibo de agua, B6 m³ facturados, B7 importe del recibo de luz,
      B8/B9 fechas de emisión y vencimiento (opcionales), B10–B12 fondo de contingencia.
@@ -52,8 +54,14 @@ Este repo es **público** (GitHub Pages gratis lo requiere en cuentas free). La 
 # servir local
 python3 -m http.server 8765
 
+# regenerar plantillas (datos ficticios) y darles formato
+node tests/crear_plantillas.js && python3 tests/estilo_plantillas.py
+
 # pruebas de cálculo
 node tests/test_calculo.js
+
+# plantillas descargables: resumen + 10 PDF con el Excel de ejemplo
+python3 tests/test_plantilla.py
 
 # punta a punta (Chrome + Playwright; necesita fotos en /workspace/recibos_web_test)
 python3 tests/test_e2e.py

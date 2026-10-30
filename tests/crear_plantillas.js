@@ -31,20 +31,20 @@ const ficticio = {
     CUENTA_BANCARIA: '19100000000000',
     CCI: '00219100000000000000',
     NOTA_PAGO: 'Por favor, envíe su comprobante de pago al tesorero vía WhatsApp indicando su número de departamento.',
-    EMPRESA_AGUA: 'Sedapal', EMPRESA_LUZ: 'Luz del Sur',
+    EMPRESA_AGUA: 'Sedapal', EMPRESA_LUZ: 'Luz del Sur', CORREO_NOMBRE_EDIFICIO: 'Edificio Ejemplo',
     NUM_DPTOS: 10, DIA_VENCIMIENTO: 5, SALDO_INICIAL_FONDO: 4097.67
   },
   deptos: [
-    { unidad: 101, propietario: 'Juan Demo', correo: 'dpto101@ejemplo.com' },
-    { unidad: 102, propietario: 'María Ejemplo', correo: 'dpto102@ejemplo.com, inquilino102@ejemplo.com' },
-    { unidad: 201, propietario: 'Pedro Prueba', correo: 'dpto201@ejemplo.com' },
-    { unidad: 202, propietario: 'Lucía Sample', correo: 'dpto202@ejemplo.com' },
-    { unidad: 301, propietario: 'Carlos Ficticio', correo: 'dpto301@ejemplo.com' },
-    { unidad: 302, propietario: 'Sofía Modelo', correo: 'dpto302@ejemplo.com' },
-    { unidad: 401, propietario: 'Diego Ensayo', correo: 'dpto401@ejemplo.com' },
-    { unidad: 402, propietario: 'Elena Dummy', correo: 'dpto402@ejemplo.com' },
-    { unidad: 501, propietario: 'Miguel Test', correo: 'dpto501@ejemplo.com' },
-    { unidad: 502, propietario: 'Laura Muestra', correo: 'dpto502@ejemplo.com' }
+    { unidad: 101, propietario: 'Juan Demo', telefono: '999001101', correo: 'dpto101@ejemplo.com' },
+    { unidad: 102, propietario: 'María Ejemplo', telefono: '999001102', correo: 'dpto102@ejemplo.com, inquilino102@ejemplo.com' },
+    { unidad: 201, propietario: 'Pedro Prueba', telefono: '999001201', correo: 'dpto201@ejemplo.com' },
+    { unidad: 202, propietario: 'Lucía Sample', telefono: '999001202', correo: 'dpto202@ejemplo.com' },
+    { unidad: 301, propietario: 'Carlos Ficticio', telefono: '999001301', correo: 'dpto301@ejemplo.com' },
+    { unidad: 302, propietario: 'Sofía Modelo', telefono: '999001302', correo: 'dpto302@ejemplo.com' },
+    { unidad: 401, propietario: 'Diego Ensayo', telefono: '999001401', correo: 'dpto401@ejemplo.com' },
+    { unidad: 402, propietario: 'Elena Dummy', telefono: '999001402', correo: 'dpto402@ejemplo.com' },
+    { unidad: 501, propietario: 'Miguel Test', telefono: '999001501', correo: 'dpto501@ejemplo.com' },
+    { unidad: 502, propietario: 'Laura Muestra', telefono: '999001502', correo: 'dpto502@ejemplo.com' }
   ],
   // Mismos números que setiembre real (para que el cálculo de ejemplo coincida), nombres inventados
   lecturas: [
@@ -88,10 +88,29 @@ console.log('cálculo OK', r.unidades.find(u => u.unidad == 101).total);
 
 // Plantilla pública: sin historial; Setiembre (ficticio) escrito en la pestaña "Mes a facturar"
 const bEj = E.aplicarBorrador ? E.prepararBorrador(ficticio, '2026-09') : null;
-bEj.servicios.emision = ''; bEj.existe = false;
+bEj.existe = false;
+bEj.fondo.gastosFondo = 120; bEj.fondo.detalle = 'Reparación de bomba de agua (ejemplo)';
+bEj.ajustes.push({ unidad: '302', concepto: 'Mora del mes anterior', monto: 10 });
 const vacioHist = Object.assign({}, ficticio, { lecturas: [], servicios: [], gastos: [], ajustes: [], fondo: [] });
 const wbEj = E.libroNuevo(vacioHist, { borrador: bEj });
 fs.writeFileSync('/workspace/recibos_web/plantilla-ejemplo.xlsx', XLSX.write(wbEj,{bookType:'xlsx',type:'buffer'}));
+
+// Excel en blanco: misma estructura, sin datos (solo números de dpto y conceptos/tipos de gasto modelo)
+const cfgBlanco = {};
+E.CLAVES_CONFIG.forEach(c => { cfgBlanco[c[0]] = ''; });
+Object.assign(cfgBlanco, { NOTA_PAGO: ficticio.config.NOTA_PAGO, EMPRESA_AGUA: 'Sedapal', EMPRESA_LUZ: 'Luz del Sur', NUM_DPTOS: 10, DIA_VENCIMIENTO: 5, SALDO_INICIAL_FONDO: '' });
+const deptosBlanco = ficticio.deptos.map(d => ({ unidad: d.unidad, propietario: '', telefono: '', correo: '' }));
+const bBl = {
+  mes: '', existe: false, servicios: { aguaImporte: '', aguaM3: '', luzImporte: '', emision: '', vencimiento: '' },
+  lecturas: deptosBlanco.map(d => ({ unidad: d.unidad, propietario: '', anterior: '', actual: '', obs: '' })),
+  gastos: [['Salario del personal', 'FIJO'], ['Consumo de luz', 'LUZ'], ['Mantenimiento de ascensor', 'FIJO'],
+    ['Jardinero / Mantenimiento de áreas verdes', 'FIJO'], ['Agua común', 'AGUA_COMUN'], ['Fondo de contingencia', 'FONDO'],
+    ['Recarga de celular conserje', 'FIJO'], ['Domingos - días', 'FIJO'], ['Materiales de limpieza', 'FIJO']]
+    .map(g => ({ concepto: g[0], monto: '', tipo: g[1], copiar: true })),
+  ajustes: [], fondo: { saldoAnterior: '', gastosFondo: '', detalle: '' }
+};
+const wbBl = E.libroNuevo({ config: cfgBlanco, deptos: deptosBlanco, lecturas: [], servicios: [], gastos: [], ajustes: [], pagos: [], fondo: [] }, { borrador: bBl });
+fs.writeFileSync('/workspace/recibos_web/plantilla-en-blanco.xlsx', XLSX.write(wbBl,{bookType:'xlsx',type:'buffer'}));
 
 // Real: a partir del verificacion_google + nombres reales
 const realJson = JSON.parse(fs.readFileSync('/workspace/sistema_recibos/ejemplo_setiembre.json', 'utf8'));

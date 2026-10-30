@@ -293,15 +293,15 @@ var MES_ETIQ = {
   detalle: 'Fondo de contingencia: detalle de esos gastos'
 };
 var MES_AYUDA = {
-  mes: 'Ej. 2026-10 para Octubre 2026. Cámbialo cada mes.',
-  aguaImporte: 'Monto total del recibo de agua del edificio.',
-  aguaM3: 'm³ que cobra el recibo de agua.',
-  luzImporte: 'Monto total del recibo de luz de áreas comunes.',
-  emision: 'Opcional. Vacío = fecha del día en que generas.',
-  vencimiento: 'Opcional. Vacío = día DIA_VENCIMIENTO del mes siguiente.',
-  saldoAnterior: 'Ya viene calculado del mes anterior. Solo cámbialo si no coincide.',
-  gastosFondo: 'Opcional. 0 si no se usó el fondo.',
-  detalle: 'Opcional.'
+  mes: '← mes a cobrar, formato AAAA-MM (ej. 2026-10)',
+  aguaImporte: '← monto total del recibo de Sedapal (S/)',
+  aguaM3: '← m³ facturados en el recibo de Sedapal',
+  luzImporte: '← monto total del recibo de Luz del Sur (S/)',
+  emision: '← opcional; vacío = fecha del día en que generas',
+  vencimiento: '← opcional; vacío = día DIA_VENCIMIENTO del mes siguiente',
+  saldoAnterior: '← viene del mes anterior; cámbialo solo si no coincide',
+  gastosFondo: '← lo pagado con el fondo este mes (0 si nada)',
+  detalle: '← en qué se usó el fondo (opcional)'
 };
 var MESES_TXT = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre'];
 function letraCol(i) { return String.fromCharCode(65 + i); }
@@ -483,6 +483,7 @@ function cargarMesHistorial(datos) {
 
 /** Escribe la pestaña "Mes a facturar" con el borrador `b` (o el del mes `mes` preparado desde el historial). Queda como 1ª pestaña. */
 function escribirHojaMes(wb, datos, mes, b) {
+  var explicito = !!b;
   b = b || prepararBorrador(datos, mes);
   var s = b.servicios || {};
   function fechaTxt(iso) { var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; }
@@ -495,7 +496,7 @@ function escribirHojaMes(wb, datos, mes, b) {
     [MES_ETIQ.aguaImporte, nv(s.aguaImporte), MES_AYUDA.aguaImporte],
     [MES_ETIQ.aguaM3, nv(s.aguaM3), MES_AYUDA.aguaM3],
     [MES_ETIQ.luzImporte, nv(s.luzImporte), MES_AYUDA.luzImporte],
-    [MES_ETIQ.emision, b.existe ? fechaTxt(s.emision) : '', MES_AYUDA.emision],
+    [MES_ETIQ.emision, (b.existe || explicito) ? fechaTxt(s.emision) : '', MES_AYUDA.emision],
     [MES_ETIQ.vencimiento, fechaTxt(s.vencimiento), MES_AYUDA.vencimiento],
     [MES_ETIQ.saldoAnterior, nv(b.fondo && b.fondo.saldoAnterior), MES_AYUDA.saldoAnterior],
     [MES_ETIQ.gastosFondo, nv(b.fondo && b.fondo.gastosFondo), MES_AYUDA.gastosFondo],

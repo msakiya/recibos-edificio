@@ -36,7 +36,12 @@ assert.strictEqual(ME.borrador.mes, '2026-09');
 const { res: r2 } = E.aplicarBorrador(L.datos, ME.borrador);
 assert.strictEqual(r2.unidades.find(x => x.unidad == 101).total, 471.99);
 assert.strictEqual(r2.totalFacturado, 4987.48);
-assert.strictEqual(r2.fondo.saldo, 4897.67);
+assert.strictEqual(r2.fondo.saldo, 4777.67);   // ejemplo: 120 pagados con el fondo
+assert.strictEqual(r2.unidades.find(x => x.unidad == 302).total, 527.62); // ejemplo: +10 de mora
+// Excel en blanco: misma estructura, sin datos (pide el mes en B4)
+{ const wbB = XLSX.read(fs.readFileSync('/workspace/recibos_web/plantilla-en-blanco.xlsx'));
+  const LB = E.leerLibro(wbB); assert.deepStrictEqual(LB.errores, []);
+  const MB = E.cargarMes(wbB, LB.datos); assert.ok(/celda B4/.test(MB.errores.join(' '))); }
 
 // Real
 const wbR = XLSX.read(fs.readFileSync('/workspace/recibos_web_test/setiembre-real.xlsx'));
