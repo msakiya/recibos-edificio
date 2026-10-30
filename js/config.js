@@ -10,6 +10,6 @@
  * └──────────────────────────────────────────────────────────────────────────────┘
  */
 window.RECIBOS_CONFIG = {
-  GOOGLE_CLIENT_ID: '',   // ← pega aquí el ID, ej. '1234567890-abcdefg.apps.googleusercontent.com'
+  GOOGLE_CLIENT_ID: '781379292772-fb79sb586u33krqsl6rm1t9a38q5f9bt.apps.googleusercontent.com',
   DRIVE_SCOPE: 'https://www.googleapis.com/auth/drive.file'
 };

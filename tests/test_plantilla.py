@@ -47,6 +47,7 @@ def main():
             # --- 0) Página real sin GOOGLE_CLIENT_ID: el botón avisa que falta configurar
             c0 = b.new_context(viewport={'width': 1100, 'height': 900})
             c0.route('https://accounts.google.com/gsi/client', lambda r, q: r.fulfill(status=200, content_type='text/javascript', body=''))
+            c0.route('**/js/config.js', lambda r, q: r.fulfill(status=200, content_type='text/javascript', body="window.RECIBOS_CONFIG = { GOOGLE_CLIENT_ID: '' };"))
             p0 = c0.new_page(); p0.goto(URL, wait_until='networkidle')
             assert 'Falta configurar' in p0.inner_text('#barraDrive0') and p0.locator('#btnConectar').is_disabled()
             c0.close()
