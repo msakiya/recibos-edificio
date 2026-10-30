@@ -179,3 +179,31 @@ footer.app {
 .gastos-tabla { min-width: 420px; }
 @media (max-width: 640px) { .resumen-cab { grid-template-columns: 1fr 1fr; } .pasos { grid-template-columns: 1fr 1fr; } }
 .resumen-tabla .m, .resumen-tabla th.m { white-space: nowrap; }
+
+/* ---- Google Drive, WhatsApp, Excel actualizado ---- */
+header.app { flex-wrap: wrap; }
+header.app > div:nth-child(2) { flex: 1 1 200px; }
+.guia-link { color: #fff; background: rgba(255,255,255,.15); border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.guia-link:hover { background: rgba(255,255,255,.25); }
+.drive-barra { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; }
+.drive-ico { width: 40px; height: 40px; border-radius: 50%; background: #e8eaf6; color: #3f51b5; display: grid; place-items: center; font-size: 22px; flex: 0 0 auto; }
+.drive-ico.ok { background: var(--ok-bg); color: var(--ok); }
+.drive-txt { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 15px; }
+.drive-txt .mini { word-break: break-word; }
+.excel-caja { background: #f7fbfa; border: 1px solid var(--borde); border-radius: 10px; padding: 12px; margin: 10px 0; }
+.excel-caja .mini { margin: 8px 0 0; }
+.wa-btn { background: #25d366; color: #fff; min-width: 120px; justify-content: center; }
+.wa-btn.hecho { background: var(--ok); }
+.wa-btn.no-disp, .wa-btn.no-disp:disabled { background: #e0e0e0; color: #777; opacity: 1; font-size: 13px; }
+.envio-btn.sin-link, .wa-btn.sin-link { opacity: .6; }
+.previas { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; align-items: start; }
+.wa-prev { background: #efeae2; border-radius: 10px; padding: 12px; border: 1px solid var(--borde); }
+.wa-cab { font-size: 12px; color: #555; margin-bottom: 8px; }
+.wa-burbuja { background: #d9fdd3; border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+.wa-burbuja a { color: #027eb5; }
+@media (max-width: 760px) { .previas { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .envio-btn, .envio-pdf, .wa-btn { flex: 1 1 30%; min-width: 0; padding: 12px 8px; }
+  .drive-barra .boton { width: 100%; justify-content: center; }
+  .excel-caja .boton { width: 100%; justify-content: center; white-space: normal; text-align: center; }
+}

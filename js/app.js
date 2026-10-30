@@ -273,12 +273,21 @@ $('btnGenerar').onclick = function () {
   ejecutarGeneracion(aplicado);
 };
 
+function esMovil() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') ||
+    (window.matchMedia && window.matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 820);
+}
+
+var gen = null;   // resultado de la última generación: {res, pdfs, excelBytes, excelNombre, links, carpetaId, subiendo, errorDrive}
+
 function ejecutarGeneracion(aplicado) {
+  // Si Drive está conectado, pide el token YA (dentro del clic) para que Google no bloquee la ventanita.
+  var dEst = Drive.estado();
+  if (dEst.conectado && Drive.configurado() && !Drive.tokenValido()) Drive.pedirToken(false).catch(function () {});
   mostrar('panelProgreso', true);
   mostrar('panelResultado', false);
   $('btnGenerar').disabled = true;
   var res = aplicado.res;
-  // Escribe el mes en el libro y el logo
   var wb = estado.wb;
   if (estado.logoDataUrl) {
     Excel.ponerLogo(wb, estado.logoDataUrl);
@@ -286,8 +295,8 @@ function ejecutarGeneracion(aplicado) {
   }
   Excel.escribirMes(wb, aplicado.datos, res.mes);
   // Deja la pestaña "Mes a facturar" lista para el mes siguiente (lecturas anteriores, gastos fijos, saldo del fondo)
-  Excel.escribirHojaMes(wb, aplicado.datos, Calculo.mesSiguiente(res.mes));
-  // Actualiza Config.NUM_DPTOS si hace falta
+  var sig = Calculo.mesSiguiente(res.mes);
+  Excel.escribirHojaMes(wb, aplicado.datos, sig);
   var excelBytes = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   var archivos = {
     logo: estado.logoDataUrl || aplicado.datos.logo || '',
@@ -295,42 +304,20 @@ function ejecutarGeneracion(aplicado) {
     agua: estado.archivos.agua,
     luz: estado.archivos.luz
   };
-  PdfGen.generarZip(aplicado.datos, res, archivos, excelBytes, function (txt, pct) {
+  PdfGen.generarTodos(aplicado.datos, res, archivos, function (txt, pct) {
     $('txtProgreso').textContent = txt;
     $('barraProgreso').style.width = Math.round(pct * 100) + '%';
-  }).then(function (out) {
+  }).then(function (pdfs) {
     $('btnGenerar').disabled = false;
     mostrar('panelProgreso', false);
     mostrar('panelResultado', true);
-    // Descarga automática
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(out.blob);
-    a.download = out.nombre;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 30000);
-    var filas = out.resumen.map(function (r) {
-      return '<tr><td>' + esc(r.unidad) + '</td><td>' + esc(r.propietario) + '</td><td class="m">' + esc(Calculo.fmtSoles(r.total)) + '</td></tr>';
-    }).join('');
-    $('panelResultado').innerHTML =
-      '<div class="banner ok"><b>✔ Listo:</b> ' + out.resumen.length + ' recibos de ' + esc(res.nombreMes + ' ' + res.anio) +
-      '. Se descargó <b>' + esc(out.nombre) + '</b> (PDF + Excel actualizado).<br>' +
-      'Guarda el Excel del ZIP: ya trae la pestaña “Mes a facturar” lista para ' + esc(Calculo.nombreMes(Calculo.mesSiguiente(res.mes)) + ' ' + Calculo.partesMes(Calculo.mesSiguiente(res.mes)).anio) + '. Llénala el próximo mes y súbelo aquí.</div>' +
-      '<div class="tabla-wrap"><table class="datos resumen-tabla"><thead><tr><th>Dpto</th><th>Propietario</th><th class="m">Total</th></tr></thead><tbody>' +
-      filas +
-      '<tr><td colspan="2"><b>Total facturado</b></td><td class="m"><b>' + esc(Calculo.fmtSoles(res.totalFacturado)) + '</b></td></tr>' +
-      '<tr><td colspan="2">Fondo de contingencia</td><td class="m">' + esc(Calculo.fmtSoles(res.fondo.saldo)) + '</td></tr>' +
-      '</tbody></table></div>' +
-      '<div class="botones"><button type="button" class="boton primario" id="btnReDescargar">⬇ Volver a descargar el ZIP</button></div>' +
-      '<div id="panelEnvio"></div>';
-    $('btnReDescargar').onclick = function () {
-      var a2 = document.createElement('a');
-      a2.href = URL.createObjectURL(out.blob); a2.download = out.nombre;
-      document.body.appendChild(a2); a2.click(); a2.remove();
-      setTimeout(function () { URL.revokeObjectURL(a2.href); }, 30000);
-    };
-    // Actualiza estado.datos con el mes escrito (para generar de nuevo o cambiar de mes)
     estado.datos = aplicado.datos;
-    pintarEnvio(out, res);
+    gen = { res: res, pdfs: pdfs, excelBytes: excelBytes, links: {}, carpetaId: '', subiendo: false, errorDrive: '', pctDrive: 0, txtDrive: '',
+            excelNombre: 'Excel actualizado - para ' + Calculo.nombreMes(sig) + ' ' + Calculo.partesMes(sig).anio + '.xlsx',
+            sigTexto: Calculo.nombreMes(sig) + ' ' + Calculo.partesMes(sig).anio };
+    enviados = {};
+    pintarResultado();
+    if (Drive.estado().conectado && Drive.configurado()) subirADrive();
   }).catch(function (e) {
     $('btnGenerar').disabled = false;
     mostrar('panelProgreso', false);
@@ -340,9 +327,79 @@ function ejecutarGeneracion(aplicado) {
   });
 }
 
+function descargarBlob(blob, nombre) {
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = nombre;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 30000);
+}
 
-/* ---------------- Enviar por correo (semi-manual, sin servidor) ---------------- */
-var enviados = {};      // solo durante esta sesión
+function pintarResultado() {
+  var res = gen.res;
+  $('panelResultado').innerHTML =
+    '<div class="banner ok"><b>✔ Listo:</b> ' + gen.pdfs.length + ' recibos de ' + esc(res.nombreMes + ' ' + res.anio) +
+    ' · Total ' + esc(Calculo.fmtSoles(res.totalFacturado)) + ' · Fondo ' + esc(Calculo.fmtSoles(res.fondo.saldo)) + '</div>' +
+    '<div class="excel-caja"><button type="button" class="boton primario" id="btnExcel">⬇ Descargar Excel actualizado (para el próximo mes)</button>' +
+    '<p class="mini">Guárdalo en lugar del anterior: ya trae la pestaña “Mes a facturar” lista para <b>' + esc(gen.sigTexto) + '</b>. El próximo mes llénalo y súbelo aquí.</p></div>' +
+    '<div id="panelDrive"></div>' +
+    '<div id="panelEnvio"></div>';
+  $('btnExcel').onclick = function () {
+    descargarBlob(new Blob([gen.excelBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), gen.excelNombre);
+  };
+  pintarPanelDrive();
+  pintarEnvio();
+}
+
+function pintarPanelDrive() {
+  var box = $('panelDrive'); if (!box || !gen) return;
+  var d = Drive.estado(), n = Object.keys(gen.links).length;
+  var html;
+  if (gen.subiendo) {
+    html = '<div class="banner info">☁ ' + esc(gen.txtDrive || 'Subiendo a Google Drive…') + '<div class="progreso"><span id="barraDrive" style="width:' + Math.round(gen.pctDrive * 100) + '%"></span></div></div>';
+  } else if (n && n === gen.pdfs.length) {
+    html = '<div class="banner ok">☁ Los ' + n + ' recibos están en Google Drive (cualquiera con el link puede verlos). ' +
+      (gen.carpetaId ? '<a href="https://drive.google.com/drive/folders/' + esc(gen.carpetaId) + '" target="_blank" rel="noopener">Abrir la carpeta</a>' : '') + '</div>';
+  } else if (gen.errorDrive) {
+    html = '<div class="banner error">No se pudieron subir los recibos a Google Drive: ' + esc(gen.errorDrive) +
+      '<div class="botones"><button type="button" class="boton primario" id="btnSubirDrive">☁ Reintentar subida a Drive</button></div></div>';
+  } else if (d.conectado && Drive.configurado()) {
+    html = '<div class="banner info">☁ Drive conectado (' + esc(d.email || 'cuenta de Google') + ').' +
+      '<div class="botones"><button type="button" class="boton primario" id="btnSubirDrive">☁ Subir recibos a Drive</button></div></div>';
+  } else {
+    html = '<div class="banner aviso"><b>Conecta Google Drive para enviar el link del recibo.</b> Los PDF se pueden descargar igual con <b>⬇ PDF</b>.' +
+      '<div class="botones"><button type="button" class="boton primario" id="btnConectarRes">☁ Conectar Google Drive</button></div></div>';
+  }
+  box.innerHTML = html;
+  if ($('btnSubirDrive')) $('btnSubirDrive').onclick = function () { Drive.pedirToken(false).catch(function () {}); subirADrive(); };
+  if ($('btnConectarRes')) $('btnConectarRes').onclick = function () { conectarDrive(true); };
+}
+
+function subirADrive() {
+  if (!gen || gen.subiendo) return;
+  var res = gen.res;
+  gen.subiendo = true; gen.errorDrive = ''; gen.pctDrive = 0; gen.txtDrive = 'Preparando carpetas en Google Drive…';
+  pintarPanelDrive();
+  var info = { edificio: Correo.nombreEdificio(estado.datos.config || {}), anio: res.anio,
+               mesNum: Calculo.partesMes(res.mes).mes, mesNombre: res.nombreMes };
+  return Drive.subirRecibos(gen.pdfs, info, function (txt, pct) {
+    gen.txtDrive = txt; gen.pctDrive = pct;
+    var b = $('barraDrive');
+    if (b) { b.style.width = Math.round(pct * 100) + '%'; b.parentNode.previousSibling.textContent = '☁ ' + txt; }
+    else pintarPanelDrive();
+  }).then(function (out) {
+    gen.subiendo = false; gen.carpetaId = out.carpetaId;
+    Object.keys(out.archivos).forEach(function (u) { gen.links[u] = out.archivos[u].link; });
+    pintarPanelDrive(); pintarEnvio();
+    toast('☁ Recibos guardados en Google Drive. Ya puedes enviar los links.');
+  }).catch(function (e) {
+    gen.subiendo = false; gen.errorDrive = e.message || String(e);
+    pintarPanelDrive(); pintarEnvio();
+    console.error(e);
+  });
+}
+
+/* ---------------- Enviar por correo / WhatsApp (sin servidor: la persona revisa y envía) ---------------- */
+var enviados = {};      // {unidad: {correo:true, wa:true}} solo durante esta sesión
 var correosEscritos = {};
 var urlsPdf = [];
 
@@ -356,7 +413,6 @@ function toast(html, ms) {
 /** Copia el cuerpo con formato (HTML) y en texto. Devuelve Promise<boolean>. */
 function copiarCorreo(c) {
   function respaldo() {
-    // Copia la vista previa "renderizada" seleccionándola (mantiene el formato al pegar)
     var div = document.createElement('div');
     div.contentEditable = 'true';
     div.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;background:#fff';
@@ -381,94 +437,172 @@ function copiarCorreo(c) {
   return Promise.resolve(respaldo());
 }
 
-function pintarEnvio(out, res) {
-  var panel = $('panelEnvio'); if (!panel) return;
+function abrir(url) {
+  var w = window.open(url, '_blank');
+  if (w) { try { w.opener = null; } catch (e) {} }
+  return w;
+}
+
+function pintarEnvio() {
+  var panel = $('panelEnvio'); if (!panel || !gen) return;
   urlsPdf.forEach(function (u) { URL.revokeObjectURL(u); }); urlsPdf = [];
+  var res = gen.res, out = gen.pdfs;
   var cfg = estado.datos.config || {};
   var mesTexto = res.nombreMes + ' ' + res.anio;
-  function correoDe(unidad) {
-    if (correosEscritos[unidad] !== undefined) return correosEscritos[unidad];
-    var d = estado.datos.deptos.filter(function (x) { return Calculo.mismaUnidad(x.unidad, unidad); })[0];
-    return d ? d.correo || '' : '';
+  var movil = esMovil();
+  function depto(unidad) { return estado.datos.deptos.filter(function (x) { return Calculo.mismaUnidad(x.unidad, unidad); })[0] || {}; }
+  function correoDe(unidad) { return correosEscritos[unidad] !== undefined ? correosEscritos[unidad] : (depto(unidad).correo || ''); }
+  function armar(r) {
+    return Correo.armar(cfg, r.unidad, mesTexto, Calculo.fmtSoles(r.total), correoDe(r.unidad),
+      { link: gen.links[r.unidad] || '', telefono: depto(r.unidad).telefono || '', movil: movil });
   }
-  function armar(r) { return Correo.armar(cfg, r.unidad, mesTexto, Calculo.fmtSoles(r.total), correoDe(r.unidad)); }
-  var sinCorreo = out.resumen.filter(function (r) { return !Correo.listaCorreos(correoDe(r.unidad)).length; }).length;
+  var hayLinks = Object.keys(gen.links).length > 0;
+  var sinCorreo = out.filter(function (r) { return !Correo.listaCorreos(correoDe(r.unidad)).length; }).length;
+  var sinTel = out.filter(function (r) { return !Correo.telefonoWhatsapp(depto(r.unidad).telefono); }).length;
+  var e0 = function (u, k) { return enviados[u] && enviados[u][k]; };
 
   panel.innerHTML =
-    '<h3 class="sub-titulo">✉ Enviar los recibos por correo</h3>' +
-    '<p class="ayuda">Para cada departamento: <b>1)</b> toca <b>Enviar</b> (se copia el mensaje y se abre Gmail con el asunto y el correo ya puestos), ' +
-    '<b>2)</b> pega el mensaje en el cuerpo (Ctrl+V o mantener presionado › Pegar), <b>3)</b> adjunta el PDF que descargaste con <b>⬇ PDF</b> y envía.</p>' +
-    (sinCorreo ? '<div class="banner aviso">' + sinCorreo + ' departamento(s) sin correo en el Excel. Puedes escribirlo aquí abajo; ' +
-      'para que quede guardado, anótalo en la pestaña <b>Departamentos</b> (columna Correo) de tu Excel.</div>' : '') +
-    '<div class="lista-envio">' + out.resumen.map(function (r, i) {
+    '<h3 class="sub-titulo">Recibos por departamento</h3>' +
+    '<p class="ayuda"><b>⬇ PDF</b> descarga el recibo. <b>✉ Correo</b> abre ' + (movil ? 'tu app de correo' : 'Gmail') + ' con el destinatario, el asunto y el mensaje' +
+    (movil ? '' : ' (el mensaje se copia: <b>pega con Ctrl+V</b> y envía)') + '. <b>🟢 WhatsApp</b> abre ' + (movil ? 'WhatsApp' : 'WhatsApp Web') + ' con el mensaje listo. ' +
+    'El correo y el WhatsApp llevan el link para ver el recibo.</p>' +
+    (hayLinks ? '' : '<div class="banner aviso">Conecta Google Drive para enviar el link del recibo.</div>') +
+    (sinCorreo || sinTel ? '<div class="banner aviso">' + (sinCorreo ? sinCorreo + ' dpto(s) sin correo. ' : '') + (sinTel ? sinTel + ' dpto(s) sin teléfono. ' : '') +
+      'Para que quede guardado, escríbelo en la pestaña <b>Departamentos</b> de tu Excel.</div>' : '') +
+    '<div class="lista-envio">' + out.map(function (r, i) {
       var url = URL.createObjectURL(r.blob); urlsPdf.push(url);
       var c = armar(r);
-      return '<div class="envio-fila' + (enviados[r.unidad] ? ' enviado' : '') + '" data-i="' + i + '">' +
+      var waBtn = c.telefono
+        ? '<button type="button" class="boton wa-btn' + (e0(r.unidad, 'wa') ? ' hecho' : '') + (c.datos.link ? '' : ' sin-link') + '">' + (e0(r.unidad, 'wa') ? '🟢 Enviado ✓' : '🟢 WhatsApp') + '</button>'
+        : '<button type="button" class="boton wa-btn no-disp" disabled title="Sin teléfono en el Excel">WhatsApp no disponible</button>';
+      return '<div class="envio-fila' + (e0(r.unidad, 'correo') || e0(r.unidad, 'wa') ? ' enviado' : '') + '" data-i="' + i + '">' +
         '<div class="envio-info"><div class="envio-dpto">Dpto ' + esc(r.unidad) + ' <span class="envio-total">' + esc(Calculo.fmtSoles(r.total)) + '</span></div>' +
-        '<div class="mini">' + esc(r.propietario || '') + '</div>' +
+        '<div class="mini">' + esc(r.propietario || '') + (c.telefono ? ' · 📱 ' + esc(Correo.telefonoBonito(depto(r.unidad).telefono)) : '') + '</div>' +
         '<input type="email" class="envio-correo" inputmode="email" autocomplete="off" placeholder="sin correo · escríbelo aquí" value="' + esc(correoDe(r.unidad)) + '">' +
         '<div class="envio-estado mini">' + (c.correos.length ? '' : '<span class="pill falta">sin correo</span>') + '</div></div>' +
         '<div class="envio-botones">' +
-          '<button type="button" class="boton envio-btn' + (enviados[r.unidad] ? ' hecho' : '') + '">' + (enviados[r.unidad] ? 'Enviado ✓' : '✉ Enviar') + '</button>' +
           '<a class="boton sec envio-pdf" href="' + url + '" download="' + esc(r.nombre) + '">⬇ PDF</a>' +
-          '<div class="envio-links"><button type="button" class="enlace envio-ver">Ver mensaje</button> · ' +
-          '<button type="button" class="enlace envio-copiar">Copiar mensaje</button> · ' +
-          '<a class="enlace envio-mailto" href="' + esc(c.mailto) + '">Otra app de correo</a></div>' +
+          '<button type="button" class="boton envio-btn' + (e0(r.unidad, 'correo') ? ' hecho' : '') + (c.datos.link ? '' : ' sin-link') + '">' + (e0(r.unidad, 'correo') ? '✉ Enviado ✓' : '✉ Correo') + '</button>' +
+          waBtn +
+          '<div class="envio-links"><button type="button" class="enlace envio-ver">Ver mensajes</button>' +
+          (c.datos.link ? ' · <a class="enlace envio-link" href="' + esc(c.datos.link) + '" target="_blank" rel="noopener">Ver en Drive</a>' : '') +
+          (movil ? '' : ' · <a class="enlace envio-mailto" href="' + esc(c.mailto) + '">Otra app de correo</a>') + '</div>' +
         '</div></div>';
     }).join('') + '</div>' +
-    '<h3 class="sub-titulo">Vista previa del correo</h3>' +
+    '<div class="previas"><div><h3 class="sub-titulo">Vista previa del correo</h3>' +
     '<div class="correo-prev"><div class="correo-prev-cab"><span class="mini">Para:</span> <b id="prevPara"></b><br>' +
-    '<span class="mini">Asunto:</span> <b id="prevAsunto"></b></div><div id="prevCuerpo" class="correo-prev-cuerpo"></div></div>';
+    '<span class="mini">Asunto:</span> <b id="prevAsunto"></b></div><div id="prevCuerpo" class="correo-prev-cuerpo"></div></div></div>' +
+    '<div><h3 class="sub-titulo">Vista previa del WhatsApp</h3><div class="wa-prev"><div class="wa-cab" id="prevWaPara"></div><div class="wa-burbuja" id="prevWa"></div></div></div></div>';
 
+  function waHtml(t) {
+    return esc(t).replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  }
   function mostrarPrev(r) {
     var c = armar(r);
     $('prevPara').textContent = c.correos.length ? c.correos.join(', ') : '(sin correo)';
     $('prevAsunto').textContent = c.asunto;
     $('prevCuerpo').innerHTML = c.html;
+    $('prevWaPara').textContent = 'Para: ' + (c.telefono ? '+' + c.telefono + ' (Dpto ' + r.unidad + ')' : 'Dpto ' + r.unidad + ' — sin teléfono en el Excel');
+    $('prevWa').innerHTML = waHtml(c.whatsappTexto);
   }
-  mostrarPrev(out.resumen[0]);
+  mostrarPrev(out[0]);
+
+  function sinLink() {
+    if (gen.subiendo) { toast('⏳ Espera a que terminen de subir los recibos a Google Drive.'); return true; }
+    toast('<b>Conecta Google Drive para enviar el link del recibo.</b> Mientras tanto puedes descargar el PDF con ⬇ PDF.', 8000);
+    var b = $('btnConectarRes') || $('btnSubirDrive'); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return true;
+  }
 
   panel.querySelectorAll('.envio-fila').forEach(function (fila) {
-    var r = out.resumen[+fila.getAttribute('data-i')];
+    var r = out[+fila.getAttribute('data-i')];
     var inp = fila.querySelector('.envio-correo');
     inp.addEventListener('input', function () {
       correosEscritos[r.unidad] = inp.value;
       var c = armar(r);
-      fila.querySelector('.envio-mailto').href = c.mailto;
+      var m = fila.querySelector('.envio-mailto'); if (m) m.href = c.mailto;
       fila.querySelector('.envio-estado').innerHTML = c.correos.length ? '' : (inp.value.trim() ? '<span class="pill aviso">correo no válido</span>' : '<span class="pill falta">sin correo</span>');
     });
     fila.querySelector('.envio-ver').onclick = function () { mostrarPrev(r); $('prevCuerpo').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
-    fila.querySelector('.envio-copiar').onclick = function () {
-      copiarCorreo(armar(r)).then(function (ok) {
-        toast(ok ? '✔ Mensaje copiado. Pégalo en el cuerpo del correo.' : 'No se pudo copiar. Selecciona la vista previa y cópiala a mano.');
-      });
-      mostrarPrev(r);
-    };
-    fila.querySelector('.envio-mailto').addEventListener('click', function () { marcar(); });
-    function marcar() {
-      enviados[r.unidad] = true;
+    function marcar(k, btn) {
+      enviados[r.unidad] = enviados[r.unidad] || {}; enviados[r.unidad][k] = true;
       fila.classList.add('enviado');
-      var b = fila.querySelector('.envio-btn'); b.textContent = 'Enviado ✓'; b.classList.add('hecho');
+      btn.textContent = (k === 'wa' ? '🟢' : '✉') + ' Enviado ✓'; btn.classList.add('hecho');
     }
+    var m = fila.querySelector('.envio-mailto');
+    if (m) m.addEventListener('click', function (ev) { if (!gen.links[r.unidad]) { ev.preventDefault(); sinLink(); return; } marcar('correo', fila.querySelector('.envio-btn')); });
     fila.querySelector('.envio-btn').onclick = function () {
-      var c = armar(r);
+      var btn = this, c = armar(r);
       mostrarPrev(r);
+      if (!c.datos.link) { sinLink(); return; }
+      if (movil) {
+        if (c.correos.length || !navigator.share) {
+          window.location.href = c.mailto;   // abre la app de correo con todo escrito (texto simple + link)
+        } else {
+          navigator.share({ title: c.asunto, text: c.texto }).catch(function () {});
+        }
+        marcar('correo', btn);
+        return;
+      }
       var copia = copiarCorreo(c);              // dentro del clic (permiso del portapapeles)
-      var w = window.open(c.gmail, '_blank');   // también dentro del clic (evita bloqueo de ventanas)
-      if (w) { try { w.opener = null; } catch (e) {} }
+      var w = abrir(c.gmail);                    // también dentro del clic (evita bloqueo de ventanas)
       copia.then(function (ok) {
-        toast((ok ? '✔ Mensaje copiado. ' : '⚠ No se pudo copiar el mensaje (usa “Copiar mensaje”). ') +
-          '<b>Pega el mensaje (Ctrl+V / mantener presionado › Pegar) y adjunta el PDF</b> “' + esc(r.nombre) + '”.' +
+        toast((ok ? '✔ Mensaje copiado. ' : '⚠ No se pudo copiar el mensaje. ') +
+          '<b>En Gmail, haz clic en el cuerpo, pega con Ctrl+V y presiona Enviar.</b>' +
           (w ? '' : '<br>El navegador bloqueó la ventana de Gmail: <a href="' + esc(c.gmail) + '" target="_blank" rel="noopener">ábrela aquí</a>.'), 10000);
       });
-      marcar();
+      marcar('correo', btn);
+    };
+    var wa = fila.querySelector('.wa-btn');
+    if (!wa.disabled) wa.onclick = function () {
+      var c = armar(r);
+      mostrarPrev(r);
+      if (!c.datos.link) { sinLink(); return; }
+      var w = abrir(c.whatsapp);
+      if (!w) toast('El navegador bloqueó la ventana de WhatsApp: <a href="' + esc(c.whatsapp) + '" target="_blank" rel="noopener">ábrela aquí</a>.', 10000);
+      marcar('wa', wa);
     };
   });
 }
 window.__pintarEnvio = pintarEnvio;
 
+/* ---------------- Google Drive: Conectar / Desconectar (barra de arriba) ---------------- */
+function conectarDrive(desdeResultado) {
+  if (!Drive.configurado()) { toast('Esta página aún no tiene configurado Google Drive (falta GOOGLE_CLIENT_ID en js/config.js).', 9000); return; }
+  if (!Drive.gisListo()) { toast('Google todavía está cargando. Espera unos segundos e inténtalo otra vez.'); return; }
+  Drive.conectar().then(function (e) {
+    toast('✔ Google Drive conectado' + (e.email ? ': <b>' + esc(e.email) + '</b>' : '') + '.');
+    if (gen && !Object.keys(gen.links).length) subirADrive();
+  }).catch(function (err) {
+    toast('⚠ ' + esc(err.message || err), 9000);
+  });
+}
+function pintarBarraDrive() {
+  var b = $('barraDrive0'); if (!b) return;
+  var e = Drive.estado();
+  if (!Drive.configurado()) {
+    b.innerHTML = '<span class="drive-ico">☁</span><div class="drive-txt"><b>Google Drive</b><span class="mini">Falta configurar la página (GOOGLE_CLIENT_ID). Puedes generar y descargar los PDF igual.</span></div>' +
+      '<button type="button" class="boton sec" id="btnConectar" disabled>Conectar Google Drive</button>';
+  } else if (e.conectado) {
+    b.innerHTML = '<span class="drive-ico ok">☁</span><div class="drive-txt"><b>Google Drive conectado</b><span class="mini" id="driveEmail">' + esc(e.email || 'cuenta de Google') + '</span></div>' +
+      '<button type="button" class="boton sec" id="btnDesconectar">Desconectar</button>';
+  } else {
+    b.innerHTML = '<span class="drive-ico">☁</span><div class="drive-txt"><b>Google Drive</b><span class="mini">Conéctalo para guardar los recibos y enviar el link a cada propietario.</span></div>' +
+      '<button type="button" class="boton primario" id="btnConectar">Conectar Google Drive</button>';
+  }
+  var c = $('btnConectar'); if (c && !c.disabled) c.onclick = function () { conectarDrive(false); };
+  var d = $('btnDesconectar'); if (d) d.onclick = function () {
+    if (!window.confirm('¿Desconectar Google Drive (' + (e.email || 'esta cuenta') + ')?\nLos recibos ya guardados siguen en ese Drive. Después puedes conectar otra cuenta.')) return;
+    Drive.desconectar().then(function () { toast('Google Drive desconectado. Puedes conectar otra cuenta cuando quieras.'); });
+  };
+}
+Drive.alCambiar(function () { pintarBarraDrive(); if (gen) { pintarPanelDrive(); } });
+pintarBarraDrive();
+
+
 // Expone para pruebas (Playwright)
 window.__RecibosApp = {
-  estado: estado, cargarExcel: cargarExcel, agregarArchivos: agregarArchivos, irA: irA
+  estado: estado, cargarExcel: cargarExcel, agregarArchivos: agregarArchivos, irA: irA,
+  gen: function () { return gen; }, pintarBarraDrive: pintarBarraDrive, subirADrive: subirADrive
 };
 })();

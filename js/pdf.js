@@ -81,41 +81,29 @@ function generarUno(res, unidad, cfg, imgs) {
 }
 
 /**
- * Genera los PDF de todas las unidades + el Excel actualizado, empaquetados en un ZIP.
+ * Genera los PDF de todas las unidades (uno por departamento, sin ZIP).
  * onProgreso(texto, pct 0-1).
- * Devuelve {blob, nombre, resumen:[{unidad,total,nombre}]}.
+ * Devuelve Promise<[{unidad, propietario, total, nombre, blob}]>.
  */
-function generarZip(datos, res, archivos, excelBytes, onProgreso) {
+function generarTodos(datos, res, archivos, onProgreso) {
   onProgreso = onProgreso || function () {};
-  var JsZip = global.JSZip;
-  if (!JsZip) return Promise.reject(new Error('JSZip no está cargado'));
-  var zip = new JsZip();
   var cfg = datos.config || {};
   var comun = { logo: (archivos && archivos.logo) || datos.logo || '', agua: (archivos && archivos.agua) || '', luz: (archivos && archivos.luz) || '' };
   var i = 0, n = res.unidades.length, resumen = [];
   function siguiente() {
-    if (i >= n) {
-      onProgreso('Empaquetando ZIP…', 0.95);
-      if (excelBytes) zip.file('Base de datos - ' + res.nombreMes + ' ' + res.anio + '.xlsx', excelBytes);
-      return zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })
-        .then(function (blob) {
-          onProgreso('Listo', 1);
-          return { blob: blob, nombre: 'Recibos - ' + res.nombreMes + ' ' + res.anio + '.zip', resumen: resumen };
-        });
-    }
+    if (i >= n) { onProgreso('Listo', 1); return resumen; }
     var u = res.unidades[i++];
-    onProgreso('Generando recibo ' + u.unidad + ' (' + i + '/' + n + ')…', (i - 1) / (n + 1));
+    onProgreso('Generando recibo ' + u.unidad + ' (' + i + '/' + n + ')…', (i - 1) / n);
     var imgs = { logo: comun.logo, agua: comun.agua, luz: comun.luz,
                  foto: (archivos && archivos.medidor && archivos.medidor[u.unidad]) || '' };
     return generarUno(res, u.unidad, cfg, imgs).then(function (pdf) {
-      zip.file(pdf.nombre, pdf.bytes);
       resumen.push({ unidad: pdf.unidad, propietario: pdf.propietario, total: pdf.total, nombre: pdf.nombre, blob: pdf.blob });
       return siguiente();
     });
   }
-  return siguiente();
+  return Promise.resolve().then(siguiente);
 }
 
-var api = { generarUno: generarUno, generarZip: generarZip };
+var api = { generarUno: generarUno, generarTodos: generarTodos };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else global.PdfGen = api;
 })(this);

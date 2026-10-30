@@ -1,5 +1,5 @@
-"""Prueba de punta a punta: carga Excel real + fotos + genera ZIP con 10 PDF."""
-import os, re, time, zipfile, io, subprocess, signal
+"""Prueba de punta a punta: carga Excel real + fotos + genera los 10 PDF (sin ZIP) y el Excel actualizado."""
+import os, re, time, subprocess, signal
 import openpyxl
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -66,38 +66,24 @@ def main():
             print('medidores asignados:', n_med)
             assert n_med >= 9, n_med
 
-            # Generar
-            with page.expect_download(timeout=300000) as di:
-                page.click('#btnGenerar')
-                # Si hay avisos, confirmar
-                try:
-                    page.wait_for_selector('#btnSiGen', timeout=5000)
-                    page.click('#btnSiGen')
-                except Exception:
-                    pass
-            download = di.value
-            zip_path = TEST / 'recibos-setiembre.zip'
-            download.save_as(str(zip_path))
-            print('ZIP:', zip_path, zip_path.stat().st_size)
-
-            page.wait_for_selector('text=Listo:', timeout=30000)
+            # Generar (sin ZIP: lista por dpto con ⬇ PDF y botón de Excel actualizado)
+            page.click('#btnGenerar')
+            try:
+                page.wait_for_selector('#btnSiGen', timeout=5000)
+                page.click('#btnSiGen')
+            except Exception:
+                pass
+            page.wait_for_selector('text=Listo:', timeout=300000)
             page.screenshot(path=str(OUT / 'captura-resultado.png'), full_page=True)
-
-            # Inspecciona ZIP
-            with zipfile.ZipFile(zip_path) as z:
-                names = z.namelist()
-                print('ZIP contiene:', names)
-                pdfs = [n for n in names if n.endswith('.pdf')]
-                xlsx = [n for n in names if n.endswith('.xlsx')]
-                assert len(pdfs) == 10, pdfs
-                assert any('101' in n and 'Setiembre' in n for n in pdfs), pdfs
-                assert len(xlsx) == 1, xlsx
-                (TEST / 'actualizado-setiembre.xlsx').write_bytes(z.read(xlsx[0]))
-                # Extrae PDF 101
-                pdf101 = [n for n in pdfs if '101' in n][0]
-                data = z.read(pdf101)
-                (TEST / 'recibo-101.pdf').write_bytes(data)
-                print('PDF 101 bytes:', len(data))
+            assert page.locator('.envio-pdf').count() == 10
+            with page.expect_download() as dp:
+                page.locator('.envio-pdf').nth(0).click()
+            assert dp.value.suggested_filename == 'Recibo - 101 - Setiembre 2026.pdf'
+            dp.value.save_as(str(TEST / 'recibo-101.pdf'))
+            assert (TEST / 'recibo-101.pdf').read_bytes()[:4] == b'%PDF'
+            with page.expect_download() as dx:
+                page.click('#btnExcel')
+            dx.value.save_as(str(TEST / 'actualizado-setiembre.xlsx'))
 
             # Excel actualizado: pestaña lista para Octubre
             wbo = openpyxl.load_workbook(TEST / 'actualizado-setiembre.xlsx')

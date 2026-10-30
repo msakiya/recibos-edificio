@@ -2,7 +2,7 @@
 
 Página web **estática** (sin servidor) para generar los recibos mensuales de un edificio a partir de un Excel.
 
-- Todo el cálculo y los PDF se hacen **en tu navegador**. Nada se envía a internet.
+- Todo el cálculo y los PDF se hacen **en tu navegador**. Solo se envían a internet los PDF que subes a *tu* Google Drive (si lo conectas).
 - Interfaz en español, en 3 pasos, usable en celular.
 - Se publica gratis con **GitHub Pages**.
 
@@ -19,20 +19,32 @@ En la página hay dos descargas: **Excel de ejemplo** (todas las celdas con núm
 2. **Paso 1 en la página:** sube el Excel. La página lee todo y muestra un resumen (no hay que escribir nada).
    Si falta algo, dice exactamente qué celda llenar.
 3. **Paso 2:** arrastra las fotos de los medidores y los recibos de luz/agua (JPG, PNG o PDF) y pulsa **Generar recibos**.
-4. Se descarga un ZIP con un PDF por departamento y el **Excel actualizado** (historial + pestaña “Mes a facturar”
-   lista para el mes siguiente). **Guarda ese Excel**: es el que llenarás y subirás el próximo mes.
+4. Aparece la lista de departamentos (sin ZIP): cada uno con **⬇ PDF**, **✉ Correo** y **🟢 WhatsApp**.
+   Descarga también **“Descargar Excel actualizado (para el próximo mes)”**: historial + pestaña “Mes a facturar”
+   lista para el mes siguiente. **Guarda ese Excel**: es el que llenarás y subirás el próximo mes.
 
-## Enviar los recibos por correo
+## Google Drive (un botón) y envío por correo / WhatsApp
 
-Después de generar, aparece la lista de los departamentos con su total, un botón **✉ Enviar** y **⬇ PDF**.
+Guía ilustrada: [`Guia-Conectar-Google-Drive.pdf`](Guia-Conectar-Google-Drive.pdf).
 
-1. Escribe los correos en la pestaña **Departamentos** del Excel (columna *Correo*; varios correos se separan con coma).
-2. Toca **✉ Enviar**: se copia el mensaje con formato y se abre Gmail con el destinatario y el asunto
-   (`Recibo de Gastos Comunes - <Mes> <Año> - Dpto <N>`).
-3. Pega el mensaje (Ctrl+V o mantener presionado › Pegar), adjunta el PDF descargado con **⬇ PDF** y envía.
+- **Conectar Google Drive** (arriba): elige la cuenta y acepta el permiso. Permiso único `drive.file`: la página solo ve
+  los archivos que ella crea. Se recuerda en el navegador el correo y que está conectado (el token no se guarda).
+  **Desconectar** quita el permiso y permite conectar otra cuenta.
+- Al generar, sube cada PDF a `Recibos <Edificio>/<Año>/<n-Mes>/RECIBOS/Recibo - 101 - <Mes Año>.pdf`
+  (reutiliza las carpetas y reemplaza el PDF si ya existe) y lo deja como “cualquiera con el link puede ver”.
+- **✉ Correo**: en computadora copia el mensaje con formato (botón grande **VER RECIBO**, cuenta, CCI, titular,
+  “Importante: Enviar constancia…”) y abre Gmail con destinatario y asunto: pegar con Ctrl+V y enviar.
+  En celular abre la app de correo con el mensaje en texto simple y el link.
+- **🟢 WhatsApp**: abre WhatsApp Web (computadora) o wa.me (celular) con el mensaje y el link. El número sale de la
+  pestaña Departamentos (9 dígitos → 51XXXXXXXXX). Sin número: botón gris “WhatsApp no disponible”.
+- Sin Drive conectado se pueden descargar los PDF, y los botones de envío avisan “Conecta Google Drive para enviar el link del recibo”.
+- Config del Excel: `TITULAR_CUENTA` y `WHATSAPP_CONSTANCIA` (vacío = celular del tesorero).
 
-¿No usas Gmail? Usa **Otra app de correo** (abre tu app de correo con el mensaje en texto simple).
-La página no envía correos sola: no hay servidor.
+### Configuración única (dueño de la página)
+
+En `js/config.js` va `GOOGLE_CLIENT_ID` (cliente OAuth “Aplicación web” de Google Cloud, con la API de Google Drive
+habilitada, origen JavaScript autorizado `https://msakiya.github.io`, scope `.../auth/drive.file`, pantalla de
+consentimiento publicada “En producción”). No es secreto.
 
 ## Cálculo (validado)
 
@@ -60,17 +72,21 @@ node tests/crear_plantillas.js && python3 tests/estilo_plantillas.py
 # pruebas de cálculo
 node tests/test_calculo.js
 
-# plantillas descargables: resumen + 10 PDF con el Excel de ejemplo
+# plantillas descargables + 10 PDF sin ZIP + sin Drive / con Drive simulado / celular (capturas para la guía)
 python3 tests/test_plantilla.py
 
 # punta a punta (Chrome + Playwright; necesita fotos en /workspace/recibos_web_test)
 python3 tests/test_e2e.py
 
-# envío por correo (portapapeles + URL de Gmail)
-python3 tests/test_correo.py
+# Drive simulado + correo + WhatsApp + desconectar (datos reales fuera del repo)
+python3 tests/test_envio.py
+node tests/test_correo_unit.js
+
+# guía PDF (usa las capturas ficticias que deja test_plantilla.py en guia/)
+python3 tests/crear_guia.py
 ```
 
-Librerías incluidas en `vendor/` (sin CDN): SheetJS 0.20.3, jsPDF 2.5.2, JSZip 3.10.1, pdf.js 3.11.174, html2canvas 1.4.1.
+Librerías incluidas en `vendor/` (sin CDN): SheetJS 0.20.3, jsPDF 2.5.2, pdf.js 3.11.174, html2canvas 1.4.1. Google Identity Services se carga desde accounts.google.com.
 
 ## Licencias de terceros
 

@@ -30,6 +30,8 @@ const ficticio = {
     BANCO: 'BCP',
     CUENTA_BANCARIA: '19100000000000',
     CCI: '00219100000000000000',
+    TITULAR_CUENTA: 'Luis Gómez Ejemplo',
+    WHATSAPP_CONSTANCIA: '999 000 222',
     NOTA_PAGO: 'Por favor, envíe su comprobante de pago al tesorero vía WhatsApp indicando su número de departamento.',
     EMPRESA_AGUA: 'Sedapal', EMPRESA_LUZ: 'Luz del Sur', CORREO_NOMBRE_EDIFICIO: 'Edificio Ejemplo',
     NUM_DPTOS: 10, DIA_VENCIMIENTO: 5, SALDO_INICIAL_FONDO: 4097.67
@@ -38,10 +40,10 @@ const ficticio = {
     { unidad: 101, propietario: 'Juan Demo', telefono: '999001101', correo: 'dpto101@ejemplo.com' },
     { unidad: 102, propietario: 'María Ejemplo', telefono: '999001102', correo: 'dpto102@ejemplo.com, inquilino102@ejemplo.com' },
     { unidad: 201, propietario: 'Pedro Prueba', telefono: '999001201', correo: 'dpto201@ejemplo.com' },
-    { unidad: 202, propietario: 'Lucía Sample', telefono: '999001202', correo: 'dpto202@ejemplo.com' },
+    { unidad: 202, propietario: 'Lucía Sample', telefono: '', correo: 'dpto202@ejemplo.com' },
     { unidad: 301, propietario: 'Carlos Ficticio', telefono: '999001301', correo: 'dpto301@ejemplo.com' },
     { unidad: 302, propietario: 'Sofía Modelo', telefono: '999001302', correo: 'dpto302@ejemplo.com' },
-    { unidad: 401, propietario: 'Diego Ensayo', telefono: '999001401', correo: 'dpto401@ejemplo.com' },
+    { unidad: 401, propietario: 'Diego Ensayo', telefono: '', correo: 'dpto401@ejemplo.com' },
     { unidad: 402, propietario: 'Elena Dummy', telefono: '999001402', correo: 'dpto402@ejemplo.com' },
     { unidad: 501, propietario: 'Miguel Test', telefono: '999001501', correo: 'dpto501@ejemplo.com' },
     { unidad: 502, propietario: 'Laura Muestra', telefono: '999001502', correo: 'dpto502@ejemplo.com' }

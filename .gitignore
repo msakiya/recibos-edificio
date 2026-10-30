@@ -6,3 +6,5 @@ node_modules/
 # Capturas y previews de prueba (pueden tener datos reales; no van al repo público)
 captura-*.png
 preview-*.png
+guia/
+__pycache__/
