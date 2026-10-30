@@ -28,10 +28,8 @@ def main():
 
             page.set_input_files('#fileExcel', str(TEST / 'setiembre-real-correos.xlsx'))
             page.wait_for_selector('text=Excel cargado', timeout=15000)
-            page.click('#btnAPaso2')
-            page.select_option('#selMes', '2026-09')
-            page.wait_for_function("() => window.__RecibosApp.estado.borrador.mes === '2026-09'")
-            page.click('#btnAPaso3')
+            page.wait_for_selector('#btnAPaso3b', timeout=15000)
+            page.click('#btnAPaso3b')
             fotos = sorted([str(f) for f in FOTOS.iterdir() if f.suffix.lower() in ('.jpg', '.jpeg', '.png')])
             fotos += [str(SET / 'recibo-de-agua-2026.09.19.jpg'), str(SET / 'Luz_del_sur_Setiembre.pdf')]
             page.set_input_files('#fileFotos', fotos)

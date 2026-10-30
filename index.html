@@ -19,15 +19,14 @@
 
 <main>
   <nav class="pasos" aria-label="Pasos">
-    <button type="button" class="paso-tab activo" data-paso="1" id="tab1"><span class="n">1</span> Excel</button>
-    <button type="button" class="paso-tab" data-paso="2" id="tab2" disabled><span class="n">2</span> Datos del mes</button>
-    <button type="button" class="paso-tab" data-paso="3" id="tab3" disabled><span class="n">3</span> Fotos y generar</button>
+    <button type="button" class="paso-tab activo" data-paso="1" id="tab1"><span class="n">1</span> Subir Excel</button>
+    <button type="button" class="paso-tab" data-paso="3" id="tab3" disabled><span class="n">2</span> Fotos y generar</button>
   </nav>
 
   <!-- ========== PASO 1 ========== -->
   <section class="tarjeta" id="paso1">
-    <h2>Paso 1 · Abre tu Excel</h2>
-    <p class="ayuda">Tu Excel es la “base de datos” del edificio (configuración, departamentos, lecturas y gastos). Si es la primera vez, descarga la plantilla de ejemplo, edítala con tus datos y guárdala en tu Drive o en tu computadora.</p>
+    <h2>Paso 1 · Sube tu Excel</h2>
+    <p class="ayuda">Cada mes llena la pestaña <b>“Mes a facturar”</b> de tu Excel (recibo de agua, recibo de luz, lecturas de los medidores, gastos y créditos) y súbelo aquí. La página lee todo del Excel y te muestra un resumen para revisar: no hay que escribir nada aquí. Si es la primera vez, descarga la plantilla de ejemplo.</p>
 
     <div class="drop" id="dropExcel" tabindex="0" role="button" aria-label="Elegir archivo Excel">
       <strong>Arrastra tu Excel aquí</strong>
@@ -40,91 +39,19 @@
       <a class="boton sec" href="plantilla-ejemplo.xlsx" download>⬇ Descargar plantilla de ejemplo</a>
       <button type="button" class="boton sec" id="btnBlanco">⬇ Descargar Excel en blanco</button>
     </div>
-    <p class="mini" style="margin-top:10px">La plantilla de ejemplo usa datos ficticios (nombres inventados). Tú reemplázalos con los de tu edificio. El logo es opcional: puedes subirlo en el paso 2.</p>
-  </section>
-
-  <!-- ========== PASO 2 ========== -->
-  <section class="tarjeta oculto" id="paso2">
-    <h2>Paso 2 · Datos del mes</h2>
-    <p class="ayuda">Revisa o completa las lecturas, los montos de agua y luz, y la lista de gastos. Lo que no cambie (gastos fijos) ya viene copiado del mes anterior.</p>
-
-    <div class="chip-mes">Mes: <select id="selMes" aria-label="Mes a generar"></select></div>
-    <div id="avisoMes" class="banner info oculto"></div>
-
-    <h3 style="color:var(--teal);font-size:15px;margin:18px 0 8px">Recibos del edificio</h3>
-    <div class="rejilla 3">
-      <div>
-        <label class="campo" for="aguaImporte">Agua · monto total (S/)</label>
-        <input type="text" id="aguaImporte" inputmode="decimal" placeholder="ej. 679.40">
-      </div>
-      <div>
-        <label class="campo" for="aguaM3">Agua · m³ facturados</label>
-        <input type="text" id="aguaM3" inputmode="decimal" placeholder="ej. 154">
-      </div>
-      <div>
-        <label class="campo" for="luzImporte">Luz · monto total (S/)</label>
-        <input type="text" id="luzImporte" inputmode="decimal" placeholder="ej. 510.40">
-      </div>
-      <div>
-        <label class="campo" for="emision">Fecha de emisión</label>
-        <input type="date" id="emision">
-      </div>
-      <div>
-        <label class="campo" for="vencimiento">Fecha de vencimiento</label>
-        <input type="date" id="vencimiento">
-      </div>
-      <div>
-        <label class="campo" for="logoFile">Logo del edificio (opcional)</label>
-        <input type="file" id="logoFile" accept="image/*">
-        <div id="logoPreview" class="mini" style="margin-top:4px"></div>
-      </div>
-    </div>
-
-    <h3 style="color:var(--teal);font-size:15px;margin:18px 0 8px">Lecturas de agua por departamento</h3>
-    <div class="tabla-wrap">
-      <table class="datos" id="tablaLecturas">
-        <thead><tr><th>Dpto</th><th>Propietario</th><th>Anterior</th><th>Actual</th><th>Consumo</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-
-    <h3 style="color:var(--teal);font-size:15px;margin:18px 0 8px">Gastos del mes</h3>
-    <p class="mini">Tipos: FIJO (se copia), EXTRA (solo este mes), FONDO (aporte al fondo), LUZ y AGUA_COMUN (se calculan solos: déjalos en blanco).</p>
-    <div class="lista-gastos" id="listaGastos"></div>
-    <button type="button" class="boton sec" id="btnAddGasto">＋ Agregar gasto</button>
-
-    <h3 style="color:var(--teal);font-size:15px;margin:18px 0 8px">Ajustes / créditos (opcional)</h3>
-    <p class="mini">Un crédito a favor se escribe con signo negativo (ej. −5).</p>
-    <div class="lista-ajustes" id="listaAjustes"></div>
-    <button type="button" class="boton sec" id="btnAddAjuste">＋ Agregar ajuste</button>
-
-    <h3 style="color:var(--teal);font-size:15px;margin:18px 0 8px">Fondo de contingencia</h3>
-    <div class="rejilla 2">
-      <div>
-        <label class="campo" for="fondoAnterior">Saldo anterior (S/)</label>
-        <input type="text" id="fondoAnterior" inputmode="decimal">
-      </div>
-      <div>
-        <label class="campo" for="fondoGastos">Gastos pagados con el fondo este mes (S/)</label>
-        <input type="text" id="fondoGastos" inputmode="decimal" placeholder="0">
-      </div>
-      <div style="grid-column:1/-1">
-        <label class="campo" for="fondoDetalle">Detalle (si hubo gasto del fondo)</label>
-        <input type="text" id="fondoDetalle" placeholder="ej. reparación de bomba">
-      </div>
-    </div>
-
-    <div class="botones">
-      <button type="button" class="boton sec" id="btnVolver1">← Volver</button>
-      <button type="button" class="boton primario" id="btnAPaso3">Continuar → Fotos y generar</button>
-    </div>
+    <p class="mini" style="margin-top:10px">La plantilla de ejemplo usa datos ficticios (nombres inventados). Reemplázalos con los de tu edificio en las pestañas Config, Departamentos y Mes a facturar.</p>
   </section>
 
   <!-- ========== PASO 3 ========== -->
   <section class="tarjeta oculto" id="paso3">
-    <h2>Paso 3 · Fotos y generar</h2>
+    <h2>Paso 2 · Fotos y generar</h2>
     <p class="ayuda">Arrastra juntas las fotos de los medidores, los comprobantes de pago (opcional) y los recibos de agua y luz del edificio (JPG, PNG o PDF). Si el nombre tiene el número del dpto (101.jpg, “Dpto 102”), se asignan solas. Si no, elígelo a mano.</p>
 
+    <div style="margin:0 0 12px">
+      <label class="campo" for="logoFile">Logo del edificio (opcional; solo si quieres cambiarlo)</label>
+      <input type="file" id="logoFile" accept="image/*">
+      <div id="logoPreview" class="mini" style="margin-top:4px"></div>
+    </div>
     <div class="drop" id="dropFotos" tabindex="0" role="button">
       <strong>Arrastra aquí todas las fotos y PDFs</strong>
       <span>o toca para elegir varios archivos</span>
@@ -134,7 +61,7 @@
     <div id="estadoArchivos" class="banner info" style="margin-top:8px">Aún no hay fotos.</div>
 
     <div class="botones">
-      <button type="button" class="boton sec" id="btnVolver2">← Volver a datos</button>
+      <button type="button" class="boton sec" id="btnVolver2">← Volver al resumen</button>
       <button type="button" class="boton naranja" id="btnGenerar">▶ Generar recibos (ZIP)</button>
     </div>
 
@@ -149,7 +76,7 @@
 
 <footer class="app">
   Todo el cálculo y los PDF se hacen en tu navegador. No hay servidor ni cuenta.<br>
-  Si actualizas el Excel, vuelve a subirlo aquí el próximo mes.
+  Cada mes: llena la pestaña “Mes a facturar” del Excel y súbelo aquí.
 </footer>
 
 <script src="vendor/xlsx-0.20.3.full.min.js"></script>

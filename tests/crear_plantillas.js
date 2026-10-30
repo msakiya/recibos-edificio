@@ -86,7 +86,11 @@ if (r.unidades.find(u => u.unidad == 101).total !== 471.99) throw new Error('101
 if (r.totalFacturado !== 4987.48) throw new Error('total');
 console.log('cálculo OK', r.unidades.find(u => u.unidad == 101).total);
 
-const wbEj = E.libroNuevo(ficticio);
+// Plantilla pública: sin historial; Setiembre (ficticio) escrito en la pestaña "Mes a facturar"
+const bEj = E.aplicarBorrador ? E.prepararBorrador(ficticio, '2026-09') : null;
+bEj.servicios.emision = ''; bEj.existe = false;
+const vacioHist = Object.assign({}, ficticio, { lecturas: [], servicios: [], gastos: [], ajustes: [], fondo: [] });
+const wbEj = E.libroNuevo(vacioHist, { borrador: bEj });
 fs.writeFileSync('/workspace/recibos_web/plantilla-ejemplo.xlsx', XLSX.write(wbEj,{bookType:'xlsx',type:'buffer'}));
 
 // Real: a partir del verificacion_google + nombres reales
@@ -99,4 +103,10 @@ realJson.lecturas.forEach(function (l) {
 });
 fs.mkdirSync('/workspace/recibos_web_test', { recursive: true });
 fs.writeFileSync('/workspace/recibos_web_test/setiembre-real.xlsx', XLSX.write(E.libroNuevo(real),{bookType:'xlsx',type:'buffer'}));
+// Real "como lo usará ella": historial hasta Agosto + Setiembre escrito en la pestaña "Mes a facturar"
+const bReal = E.prepararBorrador(real, '2026-09');
+const histReal = Object.assign({}, real, {
+  lecturas: real.lecturas.filter(x => x.mes < '2026-09'), servicios: real.servicios.filter(x => x.mes < '2026-09'),
+  gastos: real.gastos.filter(x => x.mes < '2026-09'), ajustes: real.ajustes.filter(x => x.mes < '2026-09'), fondo: real.fondo.filter(x => x.mes < '2026-09') });
+fs.writeFileSync('/workspace/recibos_web_test/setiembre-real-mes.xlsx', XLSX.write(E.libroNuevo(histReal, { borrador: bReal }),{bookType:'xlsx',type:'buffer'}));
 console.log('plantillas OK');

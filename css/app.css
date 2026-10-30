@@ -168,3 +168,14 @@ footer.app {
   .envio-botones { width: 100%; }
   .envio-btn, .envio-pdf { flex: 1 1 0; justify-content: center; }
 }
+
+/* ---- Resumen del mes ---- */
+.pasos { grid-template-columns: repeat(2, 1fr); }
+.resumen-cab { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+.resumen-cab .dato { background: #f7fbfa; border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; }
+.resumen-cab .dato span { display: block; font-size: 12px; color: #567; }
+.resumen-cab .dato b { display: block; font-size: 17px; color: var(--teal); margin-top: 2px; }
+.resumen-cab .dato small { display: block; font-size: 12px; color: #678; }
+.gastos-tabla { min-width: 420px; }
+@media (max-width: 640px) { .resumen-cab { grid-template-columns: 1fr 1fr; } .pasos { grid-template-columns: 1fr 1fr; } }
+.resumen-tabla .m, .resumen-tabla th.m { white-space: nowrap; }

@@ -11,7 +11,8 @@ function usar(lib) { XLSX = lib; }
 
 var HOJAS = {
   CONFIG: 'Config', DEPTOS: 'Departamentos', LECTURAS: 'Lecturas', SERVICIOS: 'Servicios',
-  GASTOS: 'Gastos', AJUSTES: 'Ajustes', PAGOS: 'Pagos', FONDO: 'Fondo', LOGO: 'Logo', INSTR: 'Instrucciones'
+  GASTOS: 'Gastos', AJUSTES: 'Ajustes', PAGOS: 'Pagos', FONDO: 'Fondo', LOGO: 'Logo', INSTR: 'Instrucciones',
+  MES: 'Mes a facturar'
 };
 var ENCABEZADOS = {
   Config: ['Clave (no cambiar)', 'Valor (editable)', 'Descripción'],
@@ -278,6 +279,267 @@ function revisar(b, res, archivos) {
   return { errores: errores, avisos: avisos };
 }
 
+
+/* ===================== Pestaña "Mes a facturar" (lo que se llena cada mes) ===================== */
+var MES_ETIQ = {
+  mes: 'Mes a facturar (AAAA-MM)',
+  aguaImporte: 'Agua (Sedapal): importe total del recibo (S/)',
+  aguaM3: 'Agua (Sedapal): m³ facturados',
+  luzImporte: 'Luz (Luz del Sur): importe total del recibo (S/)',
+  emision: 'Fecha de emisión del recibo (DD/MM/AAAA)',
+  vencimiento: 'Fecha de vencimiento (DD/MM/AAAA)',
+  saldoAnterior: 'Fondo de contingencia: saldo anterior (S/)',
+  gastosFondo: 'Fondo de contingencia: gastos pagados con el fondo este mes (S/)',
+  detalle: 'Fondo de contingencia: detalle de esos gastos'
+};
+var MES_AYUDA = {
+  mes: 'Ej. 2026-10 para Octubre 2026. Cámbialo cada mes.',
+  aguaImporte: 'Monto total del recibo de agua del edificio.',
+  aguaM3: 'm³ que cobra el recibo de agua.',
+  luzImporte: 'Monto total del recibo de luz de áreas comunes.',
+  emision: 'Opcional. Vacío = fecha del día en que generas.',
+  vencimiento: 'Opcional. Vacío = día DIA_VENCIMIENTO del mes siguiente.',
+  saldoAnterior: 'Ya viene calculado del mes anterior. Solo cámbialo si no coincide.',
+  gastosFondo: 'Opcional. 0 si no se usó el fondo.',
+  detalle: 'Opcional.'
+};
+var MESES_TXT = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre'];
+function letraCol(i) { return String.fromCharCode(65 + i); }
+function celda(c, f) { return letraCol(c) + (f + 1); }
+function mesDeTexto(v) {
+  var m = aMes(v);
+  if (/^\d{4}-\d{2}$/.test(m)) return m;
+  var t = sinAcentos(v).replace('septiembre', 'setiembre');
+  var anio = (t.match(/(20\d{2})/) || [])[1];
+  for (var i = 0; i < 12; i++) if (anio && t.indexOf(MESES_TXT[i]) >= 0) return anio + '-' + C.pad2(i + 1);
+  return '';
+}
+function tipoPorConcepto(concepto) {
+  var c = sinAcentos(concepto);
+  if (/\bluz\b/.test(c)) return 'LUZ';
+  if (/agua/.test(c)) return 'AGUA_COMUN';
+  if (/fondo|contingencia/.test(c)) return 'FONDO';
+  return 'FIJO';
+}
+function claveDeEtiqueta(a) {
+  var t = sinAcentos(a);
+  if (!t) return '';
+  if (/^mes\b/.test(t) || /mes a facturar/.test(t)) return 'mes';
+  if (/agua/.test(t) && /(m3|m³|metros|facturad)/.test(t) && !/importe|monto|s\/|soles/.test(t)) return 'aguaM3';
+  if (/agua/.test(t)) return 'aguaImporte';
+  if (/luz/.test(t)) return 'luzImporte';
+  if (/emision/.test(t)) return 'emision';
+  if (/vencimiento/.test(t)) return 'vencimiento';
+  if (/saldo anterior/.test(t)) return 'saldoAnterior';
+  if (/gastos pagados|gasto del fondo|gastos del fondo/.test(t)) return 'gastosFondo';
+  if (/detalle/.test(t)) return 'detalle';
+  return '';
+}
+
+/** Lee la pestaña "Mes a facturar". Devuelve null si no existe. Cada dato guarda su celda para los mensajes. */
+function leerHojaMes(wb, datos) {
+  var nombre = hoja(wb, HOJAS.MES);
+  if (!nombre) return null;
+  var r = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, raw: true, defval: '' });
+  var H = '"' + nombre + '"';
+  var campos = {}, ubic = {}, seccion = '', lect = [], gastos = [], ajustes = [];
+  r.forEach(function (f, i) {
+    var a = f[0], ta = sinAcentos(a);
+    if (/^lecturas/.test(ta)) { seccion = 'lecturas'; return; }
+    if (/^gastos/.test(ta)) { seccion = 'gastos'; return; }
+    if (/^ajustes|^creditos/.test(ta)) { seccion = 'ajustes'; return; }
+    if (!seccion) {
+      var k = claveDeEtiqueta(a);
+      if (k && (!(k in campos) || vacio(campos[k]))) { campos[k] = f[1]; ubic[k] = celda(1, i); }
+      return;
+    }
+    if (seccion === 'lecturas') {
+      var u = aUnidad(a);
+      if (!u || !/\d/.test(u) || /dpto|unidad|departamento/.test(ta)) return;
+      lect.push({ unidad: u, anterior: f[2], actual: f[3], fila: i, obs: String(f[5] || '') });
+    } else if (seccion === 'gastos') {
+      if (/^concepto/.test(ta) || /^total/.test(ta)) return;
+      var con = String(a || '').trim();
+      if (!con && vacio(f[1])) return;
+      var tipo = String(f[2] || '').toUpperCase().trim().replace(/\s+/g, '_');
+      if (TIPOS.indexOf(tipo) < 0) tipo = tipoPorConcepto(con);
+      gastos.push({ concepto: con, monto: f[1], tipo: tipo, copiar: tipo !== 'EXTRA', fila: i });
+    } else if (seccion === 'ajustes') {
+      var ua = aUnidad(a);
+      if (!ua || /dpto|unidad|departamento/.test(ta)) return;
+      if (vacio(f[2])) return;
+      ajustes.push({ unidad: ua, concepto: String(f[1] || 'Ajuste').trim() || 'Ajuste', monto: f[2], fila: i });
+    }
+  });
+  return { hoja: nombre, H: H, campos: campos, ubic: ubic, lecturas: lect, gastos: gastos, ajustes: ajustes };
+}
+
+/**
+ * Decide el mes a facturar y arma el borrador SOLO con lo que dice el Excel (sin pedir nada a mano).
+ * Devuelve {borrador, errores[], avisos[], origen: 'hoja'|'historial'|null}.
+ */
+function cargarMes(wb, datos) {
+  var errores = [], avisos = [];
+  var M = leerHojaMes(wb, datos);
+  if (!M) return cargarMesHistorial(datos);
+  var H = M.H, ub = M.ubic, cp = M.campos;
+  function donde(k) { return 'pestaña ' + H + ', celda ' + (ub[k] || ('junto a “' + MES_ETIQ[k] + '”')); }
+  var mes = mesDeTexto(cp.mes);
+  if (!mes) {
+    errores.push('Falta el mes a facturar (ej. 2026-10) → ' + donde('mes') + '.');
+    return { borrador: null, errores: errores, avisos: avisos, origen: 'hoja' };
+  }
+  var b = { mes: mes, existe: mesesConDatos(datos).indexOf(mes) >= 0, lecturas: [], servicios: {}, gastos: [], ajustes: [], fondo: {} };
+  // Servicios
+  var aI = C.parseNumero(cp.aguaImporte), aM = C.parseNumero(cp.aguaM3), lz = C.parseNumero(cp.luzImporte);
+  if (!aI) errores.push('Falta el importe del recibo de agua → ' + donde('aguaImporte') + '.');
+  if (!aM) errores.push('Faltan los m³ facturados del recibo de agua → ' + donde('aguaM3') + '.');
+  var pm = C.partesMes(C.mesSiguiente(mes));
+  b.servicios = {
+    aguaImporte: aI === null ? '' : aI, aguaM3: aM === null ? '' : aM, luzImporte: lz === null ? '' : lz,
+    emision: aFechaISO(cp.emision) || hoyISO(),
+    vencimiento: aFechaISO(cp.vencimiento) || (pm.anio + '-' + C.pad2(pm.mes) + '-' + C.pad2(Number(datos.config.DIA_VENCIMIENTO) || 5))
+  };
+  // Lecturas: una por departamento de la pestaña Departamentos
+  var prevDe = function (u) {
+    var p = datos.lecturas.filter(function (x) { return x.mes < mes && C.mismaUnidad(x.unidad, u) && !vacio(x.actual); })
+      .sort(function (a, c) { return a.mes < c.mes ? 1 : -1; })[0];
+    return p ? p.actual : '';
+  };
+  var faltan = [], negativas = [], sinAnt = [], cero = [];
+  datos.deptos.forEach(function (d) {
+    var l = M.lecturas.filter(function (x) { return C.mismaUnidad(x.unidad, d.unidad); })[0];
+    if (!l) { errores.push('El Dpto ' + d.unidad + ' no está en la tabla de lecturas → pestaña ' + H + ', sección LECTURAS DE AGUA (columna A).'); return; }
+    var ant = C.parseNumero(l.anterior), act = C.parseNumero(l.actual);
+    if (ant === null) { var pv = C.parseNumero(prevDe(d.unidad)); if (pv !== null) ant = pv; }
+    if (act === null) faltan.push(d.unidad + ' (' + celda(3, l.fila) + ')');
+    if (ant === null) sinAnt.push(d.unidad + ' (' + celda(2, l.fila) + ')');
+    if (act !== null && ant !== null && act < ant) negativas.push(d.unidad + ' (' + celda(3, l.fila) + ')');
+    if (act !== null && ant !== null && act === ant) cero.push(d.unidad);
+    b.lecturas.push({ unidad: d.unidad, propietario: d.propietario, anterior: ant === null ? '' : ant, actual: act === null ? '' : act, obs: l.obs || '' });
+  });
+  if (faltan.length) errores.push('Falta la lectura actual del medidor de: ' + faltan.join(', ') + ' → pestaña ' + H + ', columna D.');
+  if (sinAnt.length) errores.push('Falta la lectura anterior de: ' + sinAnt.join(', ') + ' → pestaña ' + H + ', columna C.');
+  if (negativas.length) errores.push('La lectura actual es MENOR que la anterior en: ' + negativas.join(', ') + '. Revisa esos números en la pestaña ' + H + '.');
+  if (cero.length) avisos.push('Consumo 0 m³ (lectura actual igual a la anterior) en: ' + C.listaUnidades(cero) + '. Si no es correcto, revisa la pestaña ' + H + '.');
+  // Gastos
+  var malos = [];
+  M.gastos.forEach(function (g) {
+    var n = C.parseNumero(g.monto);
+    if (!vacio(g.monto) && n === null) malos.push(celda(1, g.fila));
+    var monto = n === null ? '' : n;
+    if (g.tipo === 'LUZ') { if (lz === null && n !== null) b.servicios.luzImporte = n; monto = ''; }
+    if (g.tipo === 'AGUA_COMUN') monto = '';
+    b.gastos.push({ concepto: g.concepto || (g.tipo === 'LUZ' ? 'Consumo de luz' : g.tipo === 'AGUA_COMUN' ? 'Agua común' : 'Gasto'), monto: monto, tipo: g.tipo, copiar: g.copiar });
+  });
+  if (malos.length) errores.push('Monto no válido en la sección GASTOS (celdas ' + malos.join(', ') + ') de la pestaña ' + H + '. Escribe solo números (ej. 349.34).');
+  if (!b.gastos.some(function (g) { return g.tipo === 'AGUA_COMUN'; })) b.gastos.push({ concepto: 'Agua común', monto: '', tipo: 'AGUA_COMUN', copiar: true });
+  if (!b.gastos.some(function (g) { return g.tipo !== 'LUZ' && g.tipo !== 'AGUA_COMUN' && C.parseNumero(g.monto); }))
+    errores.push('No hay gastos con monto → pestaña ' + H + ', sección GASTOS COMUNES DEL MES (columna B).');
+  if (b.servicios.luzImporte === '') {
+    if (b.gastos.some(function (g) { return g.tipo === 'LUZ'; })) avisos.push('No hay monto del recibo de luz (saldrá S/ 0.00) → ' + donde('luzImporte') + '.');
+  } else if (!b.gastos.some(function (g) { return g.tipo === 'LUZ'; })) {
+    b.gastos.unshift({ concepto: 'Consumo de luz', monto: '', tipo: 'LUZ', copiar: true });
+  }
+  // Ajustes
+  M.ajustes.forEach(function (a) {
+    var n = C.parseNumero(a.monto);
+    if (n === null) { errores.push('Monto no válido en AJUSTES, celda ' + celda(2, a.fila) + ' de la pestaña ' + H + '.'); return; }
+    if (!datos.deptos.some(function (d) { return C.mismaUnidad(d.unidad, a.unidad); }))
+      { errores.push('El ajuste de la celda ' + celda(0, a.fila) + ' es para el Dpto ' + a.unidad + ', que no está en la pestaña Departamentos.'); return; }
+    b.ajustes.push({ unidad: a.unidad, concepto: a.concepto, monto: n });
+  });
+  // Fondo
+  var sa = C.parseNumero(cp.saldoAnterior), gf = C.parseNumero(cp.gastosFondo);
+  b.fondo = { saldoAnterior: sa === null ? saldoFondoAntes(datos, mes) : sa, gastosFondo: gf === null ? '' : gf, detalle: vacio(cp.detalle) ? '' : String(cp.detalle) };
+  if (b.existe && datos.fondo.some(function (f) { return f.mes === mes; }))
+    avisos.push('El mes ' + C.nombreMes(mes) + ' ' + C.partesMes(mes).anio + ' ya se había generado antes: al generar se reemplaza en el historial.');
+  // Agua común negativa
+  if (!errores.length) {
+    var res = aplicarBorrador(datos, b).res;
+    if (res.agua.m3Comun < 0) errores.push('La suma de consumos de los dptos (' + C.fmtNum(res.agua.consumoDptos, 3) + ' m³) es mayor que los m³ del recibo de agua (' +
+      C.fmtNum(res.agua.m3, 0) + ') → revisa las lecturas o ' + donde('aguaM3') + '.');
+  }
+  return { borrador: errores.length ? null : b, errores: errores, avisos: avisos, origen: 'hoja' };
+}
+
+/** Excel antiguo (sin pestaña "Mes a facturar"): usa el último mes de las pestañas Lecturas/Servicios si está completo. */
+function cargarMesHistorial(datos) {
+  var errores = [], avisos = [];
+  var ms = mesesConDatos(datos);
+  var ult = ms[ms.length - 1];
+  var NOTA = 'Tu Excel no tiene la pestaña "Mes a facturar". Descarga tu Excel con esa pestaña (botón de abajo), llénala con los datos del mes y vuelve a subirlo.';
+  if (!ult) return { borrador: null, errores: [NOTA], avisos: avisos, origen: null, sinHoja: true };
+  var b = prepararBorrador(datos, ult);
+  var generado = datos.fondo.some(function (f) { return f.mes === ult; });
+  var res = aplicarBorrador(datos, b).res;
+  var r = revisar(b, res, null);
+  if (generado || r.errores.length) {
+    return { borrador: null, errores: [NOTA], avisos: avisos, origen: null, sinHoja: true, mesSugerido: generado ? C.mesSiguiente(ult) : ult };
+  }
+  avisos.push('Datos leídos de las pestañas Lecturas y Servicios (' + C.nombreMes(ult) + ' ' + C.partesMes(ult).anio + '). El Excel que se descarga ya trae la pestaña "Mes a facturar" para el mes siguiente.');
+  return { borrador: b, errores: [], avisos: avisos.concat(r.avisos), origen: 'historial' };
+}
+
+/** Escribe la pestaña "Mes a facturar" con el borrador `b` (o el del mes `mes` preparado desde el historial). Queda como 1ª pestaña. */
+function escribirHojaMes(wb, datos, mes, b) {
+  b = b || prepararBorrador(datos, mes);
+  var s = b.servicios || {};
+  function fechaTxt(iso) { var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; }
+  function nv(v) { return vacio(v) || v === null ? '' : v; }
+  var aoa = [
+    ['DATOS DEL MES A FACTURAR — llena esta pestaña cada mes y sube el Excel a la página'],
+    ['Solo cambia las celdas en blanco o con números. La página lee todo de aquí: no hay que escribir nada más en la página.'],
+    [''],
+    [MES_ETIQ.mes, b.mes, MES_AYUDA.mes],
+    [MES_ETIQ.aguaImporte, nv(s.aguaImporte), MES_AYUDA.aguaImporte],
+    [MES_ETIQ.aguaM3, nv(s.aguaM3), MES_AYUDA.aguaM3],
+    [MES_ETIQ.luzImporte, nv(s.luzImporte), MES_AYUDA.luzImporte],
+    [MES_ETIQ.emision, b.existe ? fechaTxt(s.emision) : '', MES_AYUDA.emision],
+    [MES_ETIQ.vencimiento, fechaTxt(s.vencimiento), MES_AYUDA.vencimiento],
+    [MES_ETIQ.saldoAnterior, nv(b.fondo && b.fondo.saldoAnterior), MES_AYUDA.saldoAnterior],
+    [MES_ETIQ.gastosFondo, nv(b.fondo && b.fondo.gastosFondo), MES_AYUDA.gastosFondo],
+    [MES_ETIQ.detalle, (b.fondo && b.fondo.detalle) || '', MES_AYUDA.detalle],
+    [''],
+    ['LECTURAS DE AGUA (m³) — escribe la lectura ACTUAL de cada medidor (columna D)'],
+    ['Dpto', 'Propietario', 'Lectura anterior', 'Lectura actual', 'Consumo m³', 'Observación']
+  ];
+  var filaLect0 = aoa.length;
+  b.lecturas.forEach(function (l, i) {
+    aoa.push([isNaN(Number(l.unidad)) ? l.unidad : Number(l.unidad), l.propietario || '', nv(l.anterior), nv(l.actual), '', l.obs || '']);
+  });
+  aoa.push(['']);
+  aoa.push(['GASTOS COMUNES DEL MES — monto TOTAL del edificio (la página lo divide entre los dptos)']);
+  aoa.push(['Concepto (tal como sale en el recibo)', 'Monto total (S/)', 'Tipo', 'Nota']);
+  b.gastos.forEach(function (g) {
+    var nota = g.tipo === 'LUZ' ? 'Automático: usa el importe de luz de arriba' : g.tipo === 'AGUA_COMUN' ? 'Automático: se calcula con el agua' :
+      g.tipo === 'EXTRA' ? 'Solo este mes' : g.tipo === 'FONDO' ? 'Aporte al fondo de contingencia' : '';
+    aoa.push([g.concepto, (g.tipo === 'LUZ' || g.tipo === 'AGUA_COMUN') ? '' : nv(g.monto), g.tipo, nota]);
+  });
+  for (var k = 0; k < 3; k++) aoa.push(['', '', 'EXTRA', k === 0 ? '← filas libres: escribe concepto y monto de un gasto EXTRA de este mes' : '']);
+  aoa.push(['']);
+  aoa.push(['AJUSTES / CRÉDITOS (opcional) — monto negativo = crédito a favor (ej. -5)']);
+  aoa.push(['Dpto', 'Concepto (sale en el recibo)', 'Monto (S/)']);
+  b.ajustes.forEach(function (a) { aoa.push([isNaN(Number(a.unidad)) ? a.unidad : Number(a.unidad), a.concepto, a.monto]); });
+  for (var j = 0; j < 4; j++) aoa.push(['', '', '']);
+  aoa.push(['']);
+  aoa.push(['TIPOS de gasto: FIJO (se repite cada mes) · EXTRA (solo este mes) · FONDO (aporte al fondo) · LUZ y AGUA_COMUN (se calculan solos, deja el monto vacío).']);
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  // Consumo = actual − anterior (fórmula, solo como ayuda visual)
+  b.lecturas.forEach(function (l, i) {
+    var f = filaLect0 + i + 1;
+    ws['E' + f] = { t: 'n', f: 'IF(D' + f + '="","",ROUND(D' + f + '-C' + f + ',3))' };
+  });
+  ws['!cols'] = [{ wch: 58 }, { wch: 30 }, { wch: 18 }, { wch: 40 }, { wch: 12 }, { wch: 24 }];
+  var n = hoja(wb, HOJAS.MES);
+  if (n) wb.Sheets[n] = ws;
+  else { XLSX.utils.book_append_sheet(wb, ws, HOJAS.MES); n = HOJAS.MES; }
+  wb.SheetNames.splice(wb.SheetNames.indexOf(n), 1);
+  wb.SheetNames.unshift(n);
+  if (wb.Workbook && wb.Workbook.Sheets) delete wb.Workbook.Sheets; // evita índices de hojas desfasados
+  return wb;
+}
+
 /* ------------------------------- escritura ------------------------------- */
 function reemplazarMes(filasViejas, mes, nuevas) {
   var cuerpo = filasViejas.slice(1).filter(function (f) { return aMes(f[0]) !== mes && f.some(function (x) { return !vacio(x); }); });
@@ -323,23 +585,25 @@ var TEXTO_INSTRUCCIONES = [
   ['RECIBOS DEL EDIFICIO — cómo usar este Excel'],
   [''],
   ['1. Este archivo es la "base de datos". Guárdalo en tu Drive o en tu computadora y NO lo pierdas.'],
-  ['2. Abre la página de recibos, pulsa "Elegir mi Excel" y elige este archivo.'],
-  ['3. La página prepara el mes nuevo: escribe las lecturas, los recibos de agua y luz, revisa los gastos y sube las fotos.'],
-  ['4. Al pulsar "Generar recibos" se descarga un ZIP con los PDF y este Excel ACTUALIZADO: guarda el Excel nuevo en lugar de este.'],
+  ['2. Cada mes llena SOLO la pestaña "Mes a facturar": mes, recibo de agua (S/ y m³), recibo de luz, lecturas actuales de los medidores, gastos y créditos.'],
+  ['3. Abre la página de recibos y sube este Excel. La página muestra un resumen para revisar (no hay que escribir nada en la página).'],
+  ['4. Sube las fotos y pulsa "Generar recibos": se descarga un ZIP con los PDF y este Excel ACTUALIZADO, con la pestaña "Mes a facturar" lista para el mes siguiente.'],
+  ['   Guarda el Excel nuevo en lugar de este.'],
   [''],
   ['Pestañas:'],
+  ['  Mes a facturar: lo único que se llena cada mes.'],
   ['  Config: datos del edificio (presidente, tesorero, banco, cuenta, CCI, día de vencimiento...). Cambia solo la columna B.'],
   ['  Departamentos: un renglón por departamento (unidad, propietario y correo; si hay varios correos, sepáralos con coma).'],
-  ['  Lecturas, Servicios, Gastos, Ajustes, Fondo: la página las llena mes a mes. También puedes escribir aquí un mes antes de abrir la página.'],
-  ['  Gastos - Tipo: FIJO, EXTRA (no se repite), FONDO (aporte al fondo de contingencia), LUZ (= recibo de luz), AGUA_COMUN (se calcula solo).'],
-  ['  Ajustes: cargos (+) o créditos a favor (−) de un dpto en un mes.'],
+  ['  Lecturas, Servicios, Gastos, Ajustes, Fondo: historial de los meses ya generados (la página los llena sola; no hace falta tocarlos).'],
+  ['  Tipos de gasto: FIJO, EXTRA (no se repite), FONDO (aporte al fondo de contingencia), LUZ (= recibo de luz), AGUA_COMUN (se calcula solo).'],
   ['  Logo: lo llena la página si subes el logo. No la edites.'],
   [''],
   ['Cálculo: cada gasto se divide entre el número de dptos; el agua de cada dpto = consumo × (monto del recibo de agua ÷ m³ facturados);'],
   ['el agua común = (m³ del recibo − m³ de los dptos) × precio; el céntimo de redondeo del agua va al dpto de mayor consumo.']
 ];
 /** Libro nuevo con todas las pestañas (para "Excel en blanco" y la plantilla de ejemplo). */
-function libroNuevo(datos) {
+function libroNuevo(datos, opc) {
+  opc = opc || {};
   var wb = XLSX.utils.book_new();
   datos = datos || { config: {}, deptos: [], lecturas: [], servicios: [], gastos: [], ajustes: [], pagos: [], fondo: [] };
   var ws = XLSX.utils.aoa_to_sheet(TEXTO_INSTRUCCIONES); ws['!cols'] = [{ wch: 120 }];
@@ -355,12 +619,14 @@ function libroNuevo(datos) {
   var meses = mesesConDatos(datos);
   meses.forEach(function (m) { escribirMes(wb, datos, m); });
   if (datos.logo) ponerLogo(wb, datos.logo);
+  if (opc.mes || opc.borrador) escribirHojaMes(wb, datos, opc.mes || opc.borrador.mes, opc.borrador);
   return wb;
 }
 
 var api = { usar: usar, HOJAS: HOJAS, ENCABEZADOS: ENCABEZADOS, CLAVES_CONFIG: CLAVES_CONFIG, TIPOS: TIPOS,
   leerLibro: leerLibro, mesesConDatos: mesesConDatos, mesSugerido: mesSugerido, opcionesMeses: opcionesMeses,
   prepararBorrador: prepararBorrador, aplicarBorrador: aplicarBorrador, revisar: revisar, saldoFondoAntes: saldoFondoAntes,
-  escribirMes: escribirMes, ponerLogo: ponerLogo, libroNuevo: libroNuevo, aMes: aMes, aFechaISO: aFechaISO, hoyISO: hoyISO };
+  escribirMes: escribirMes, ponerLogo: ponerLogo, libroNuevo: libroNuevo,
+  leerHojaMes: leerHojaMes, cargarMes: cargarMes, escribirHojaMes: escribirHojaMes, mesDeTexto: mesDeTexto, aMes: aMes, aFechaISO: aFechaISO, hoyISO: hoyISO };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else global.Excel = api;
 })(this);

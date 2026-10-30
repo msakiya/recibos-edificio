@@ -30,15 +30,48 @@ assert.strictEqual(L.errores.length, 0);
 assert.strictEqual(L.datos.config.EDIFICIO_NOMBRE, 'EDIFICIO EJEMPLO');
 assert.strictEqual(L.datos.config.CUENTA_BANCARIA, '19100000000000'); // ficticia
 assert.ok(!/De la Gala|Aracelly|19117030817045/.test(JSON.stringify(L.datos)), 'no datos reales en plantilla pública');
-const b = E.prepararBorrador(L.datos, '2026-09');
-const { res: r2 } = E.aplicarBorrador(L.datos, b);
+const ME = E.cargarMes(wb, L.datos);
+assert.deepStrictEqual(ME.errores, []);
+assert.strictEqual(ME.borrador.mes, '2026-09');
+const { res: r2 } = E.aplicarBorrador(L.datos, ME.borrador);
 assert.strictEqual(r2.unidades.find(x => x.unidad == 101).total, 471.99);
+assert.strictEqual(r2.totalFacturado, 4987.48);
+assert.strictEqual(r2.fondo.saldo, 4897.67);
 
 // Real
 const wbR = XLSX.read(fs.readFileSync('/workspace/recibos_web_test/setiembre-real.xlsx'));
 const LR = E.leerLibro(wbR);
 const { res: r3 } = E.aplicarBorrador(LR.datos, E.prepararBorrador(LR.datos, '2026-09'));
 assert.strictEqual(r3.unidades.find(x => x.unidad == 101).total, 471.99);
+
+// Real con pestaña "Mes a facturar" (como lo llenará ella) + ida y vuelta al mes siguiente
+{
+  const wbM = XLSX.read(fs.readFileSync('/workspace/recibos_web_test/setiembre-real-mes.xlsx'), { cellDates: true });
+  const LM = E.leerLibro(wbM);
+  const MM = E.cargarMes(wbM, LM.datos);
+  assert.deepStrictEqual(MM.errores, []);
+  const ap = E.aplicarBorrador(LM.datos, MM.borrador);
+  const u = n => ap.res.unidades.find(x => x.unidad == n).total;
+  assert.strictEqual(u(101), 471.99); assert.strictEqual(u(102), 597.80); assert.strictEqual(u(501), 538.00);
+  assert.strictEqual(ap.res.totalFacturado, 4987.48); assert.strictEqual(ap.res.fondo.saldo, 4897.67);
+  // Genera: historial + pestaña para Octubre
+  E.escribirMes(wbM, ap.datos, '2026-09');
+  E.escribirHojaMes(wbM, ap.datos, '2026-10');
+  const wb2 = XLSX.read(XLSX.write(wbM, { bookType: 'xlsx', type: 'buffer' }), { cellDates: true });
+  assert.strictEqual(wb2.SheetNames[0], 'Mes a facturar');
+  const L2 = E.leerLibro(wb2);
+  const M2 = E.cargarMes(wb2, L2.datos);
+  const txt = M2.errores.join(' | ');
+  assert.ok(/importe del recibo de agua .*celda B5/.test(txt), txt);
+  assert.ok(/m³ facturados .*celda B6/.test(txt), txt);
+  assert.ok(/lectura actual .*101 \(D16\)/.test(txt), txt);
+  const H = E.leerHojaMes(wb2, L2.datos);
+  assert.strictEqual(E.mesDeTexto(H.campos.mes), '2026-10');
+  assert.strictEqual(H.lecturas[0].anterior, 1290.107);            // anterior = actual de setiembre
+  assert.strictEqual(H.campos.saldoAnterior, 4897.67);             // fondo arrastrado
+  assert.ok(!H.gastos.some(g => g.tipo === 'EXTRA' && g.concepto));  // extras no se copian
+  console.log('ida y vuelta Setiembre → Octubre OK');
+}
 
 // Media clasificación
 const clas = M.clasificar([

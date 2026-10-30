@@ -8,11 +8,17 @@ Página web **estática** (sin servidor) para generar los recibos mensuales de u
 
 ## Cómo usarla
 
-1. Abre la página.
-2. **Paso 1:** sube tu Excel (o descarga la plantilla de ejemplo / un Excel en blanco).
-3. **Paso 2:** elige el mes, escribe las lecturas nuevas, los montos de agua y luz, y revisa los gastos.
-4. **Paso 3:** arrastra las fotos de los medidores y los recibos de luz/agua (JPG, PNG o PDF). Pulsa **Generar recibos**.
-5. Se descarga un ZIP con un PDF por departamento y el Excel actualizado. **Guarda ese Excel**: es el que subirás el próximo mes.
+1. **Cada mes, en el Excel:** llena la pestaña **“Mes a facturar”** (es la primera):
+   - B4 mes (ej. `2026-10`), B5 importe del recibo de agua, B6 m³ facturados, B7 importe del recibo de luz,
+     B8/B9 fechas de emisión y vencimiento (opcionales), B10–B12 fondo de contingencia.
+   - Sección **LECTURAS DE AGUA**: la lectura **actual** de cada medidor (columna D). La anterior ya viene puesta.
+   - Sección **GASTOS COMUNES DEL MES**: montos totales del edificio (los fijos ya vienen copiados; agrega los EXTRA).
+   - Sección **AJUSTES / CRÉDITOS**: opcional (crédito = monto negativo).
+2. **Paso 1 en la página:** sube el Excel. La página lee todo y muestra un resumen (no hay que escribir nada).
+   Si falta algo, dice exactamente qué celda llenar.
+3. **Paso 2:** arrastra las fotos de los medidores y los recibos de luz/agua (JPG, PNG o PDF) y pulsa **Generar recibos**.
+4. Se descarga un ZIP con un PDF por departamento y el **Excel actualizado** (historial + pestaña “Mes a facturar”
+   lista para el mes siguiente). **Guarda ese Excel**: es el que llenarás y subirás el próximo mes.
 
 ## Enviar los recibos por correo
 

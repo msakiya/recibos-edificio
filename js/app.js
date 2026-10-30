@@ -19,15 +19,14 @@ function mostrar(id, si) { $(id).classList.toggle('oculto', !si); }
 function esc(s) { return ReciboHtml.esc(s); }
 
 function irA(paso) {
-  if (paso > 1 && !estado.datos) return;
-  if (paso > 2 && !estado.borrador) return;
+  if (paso > 1 && !estado.borrador) return;
   estado.paso = paso;
-  [1, 2, 3].forEach(function (n) {
+  [1, 3].forEach(function (n) {
     mostrar('paso' + n, n === paso);
     var t = $('tab' + n);
     t.classList.toggle('activo', n === paso);
     t.classList.toggle('hecho', n < paso);
-    t.disabled = (n > 1 && !estado.datos) || (n > 2 && !estado.borrador);
+    t.disabled = n > 1 && !estado.borrador;
   });
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -71,15 +70,30 @@ function cargarExcel(files) {
     estado.logoDataUrl = L.datos.logo || '';
     estado.archivos = { medidor: {}, pago: {}, agua: '', luz: '' };
     estado.cola = [];
-    var ms = Excel.mesesConDatos(L.datos);
-    var sug = Excel.mesSugerido(L.datos, Excel.hoyISO().slice(0, 7));
-    info.innerHTML = '<div class="banner ok">✔ Excel cargado: <b>' + esc(f.name) + '</b><br>' +
-      esc(L.datos.config.EDIFICIO_NOMBRE || '(sin nombre)') + ' · ' + L.datos.deptos.length + ' departamentos' +
-      (ms.length ? ' · meses registrados: ' + ms.join(', ') : ' · sin meses aún') +
-      '<br>Mes sugerido: <b>' + esc(Calculo.nombreMes(sug) + ' ' + Calculo.partesMes(sug).anio) + '</b></div>' +
-      (L.avisos.length ? '<div class="banner aviso"><ul>' + L.avisos.map(function (a) { return '<li>' + esc(a) + '</li>'; }).join('') + '</ul></div>' : '') +
-      '<div class="botones"><button type="button" class="boton primario" id="btnAPaso2">Continuar → Datos del mes</button></div>';
-    $('btnAPaso2').onclick = function () { abrirPaso2(sug); };
+    estado.borrador = null;
+    var M = Excel.cargarMes(wb, L.datos);
+    var cab = '<div class="banner ok">✔ Excel cargado: <b>' + esc(f.name) + '</b> · ' +
+      esc(L.datos.config.EDIFICIO_NOMBRE || '(sin nombre)') + ' · ' + L.datos.deptos.length + ' departamentos</div>';
+    var avisos = L.avisos.concat(M.avisos);
+    var htmlAvisos = avisos.length ? '<div class="banner aviso"><ul>' + avisos.map(function (a) { return '<li>' + esc(a) + '</li>'; }).join('') + '</ul></div>' : '';
+    if (M.errores.length) {
+      info.innerHTML = cab + '<div class="banner error"><b>Falta completar el Excel.</b> Corrige esto en tu Excel, guárdalo y vuelve a subirlo:<ul>' +
+        M.errores.map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>' + htmlAvisos +
+        (M.sinHoja ? '<div class="botones"><button type="button" class="boton primario" id="btnConHoja">⬇ Descargar mi Excel con la pestaña “Mes a facturar”</button></div>' : '');
+      if (M.sinHoja) $('btnConHoja').onclick = function () { descargarConHojaMes(M.mesSugerido || Excel.hoyISO().slice(0, 7)); };
+      irA(1);
+      return;
+    }
+    estado.borrador = M.borrador;
+    var ap = Excel.aplicarBorrador(estado.datos, estado.borrador);
+    info.innerHTML = cab + htmlAvisos +
+      '<h3 class="sub-titulo">Revisa los datos de ' + esc(ap.res.nombreMes + ' ' + ap.res.anio) + ' (leídos del Excel)</h3>' +
+      '<p class="mini">Si algo está mal, corrígelo en la pestaña “Mes a facturar” de tu Excel y vuelve a subirlo.</p>' +
+      htmlResumen(estado.borrador, ap.res) +
+      '<div class="botones"><button type="button" class="boton primario" id="btnAPaso3b">Todo bien → Subir fotos y generar</button></div>';
+    pintarLogo();
+    $('btnAPaso3b').onclick = function () { irA(3); pintarEstadoArchivos(); };
+    irA(1);
   }).catch(function (e) {
     info.innerHTML = '<div class="banner error">No se pudo leer el Excel: ' + esc(e.message || e) + '</div>';
   });
@@ -87,7 +101,7 @@ function cargarExcel(files) {
 setupDrop('dropExcel', 'fileExcel', cargarExcel);
 
 $('btnBlanco').onclick = function () {
-  var wb = Excel.libroNuevo({
+  var base = {
     config: {
       EDIFICIO_NOMBRE: '', DIRECCION_LINEA_1: '', DIRECCION_LINEA_2: '',
       PRESIDENTE_NOMBRE: '', PRESIDENTE_CELULAR: '', TESORERO_NOMBRE: '', TESORERO_CELULAR: '',
@@ -107,146 +121,18 @@ $('btnBlanco').onclick = function () {
       { mes: '1970-01', num: 8, concepto: 'Domingos - días', monto: 0, tipo: 'FIJO', copiar: 'SÍ' },
       { mes: '1970-01', num: 9, concepto: 'Materiales de limpieza', monto: 0, tipo: 'FIJO', copiar: 'SÍ' }
     ], ajustes: [], pagos: [], fondo: []
-  });
-  // Quita el mes ficticio 1970-01 dejando solo la plantilla de gastos como "modelo" en un comentario... mejor: gastos base sin mes
-  // Reescribimos Gastos con mes vacío → la primera vez el usuario los completa; prepararBorrador copia del último.
-  // Truco: usamos un mes "modelo" que prepararBorrador encontrará si no hay otro.
+  };
+  // Historial vacío; la pestaña "Mes a facturar" trae el mes actual con la lista de gastos modelo
+  var b = Excel.prepararBorrador(base, Excel.hoyISO().slice(0, 7));
+  b.servicios.emision = '';
+  var wb = Excel.libroNuevo(Object.assign({}, base, { gastos: [] }), { borrador: b });
   XLSX.writeFile(wb, 'Base de datos - Edificio (en blanco).xlsx');
 };
 
-/* ---------------- Paso 2 ---------------- */
-function abrirPaso2(mes) {
-  var ops = Excel.opcionesMeses(estado.datos, Excel.hoyISO().slice(0, 7));
-  var sel = $('selMes');
-  sel.innerHTML = ops.map(function (o) {
-    return '<option value="' + o.v + '"' + (o.v === mes ? ' selected' : '') + '>' + esc(o.label) + '</option>';
-  }).join('');
-  cargarBorrador(mes || sel.value);
-  irA(2);
-}
-$('selMes').onchange = function () { cargarBorrador(this.value); };
-$('btnVolver1').onclick = function () { irA(1); };
+/* ---------------- Resumen del mes (solo lectura, todo sale del Excel) ---------------- */
 $('tab1').onclick = function () { irA(1); };
-$('tab2').onclick = function () { if (estado.datos) irA(2); };
 $('tab3').onclick = function () { if (estado.borrador) irA(3); };
-
-function cargarBorrador(mes) {
-  estado.borrador = Excel.prepararBorrador(estado.datos, mes);
-  var b = estado.borrador;
-  var av = $('avisoMes');
-  if (b.existe) {
-    av.className = 'banner aviso'; av.classList.remove('oculto');
-    av.textContent = 'Este mes ya está en el Excel. Si generas de nuevo, se actualizarán sus filas.';
-  } else {
-    av.className = 'banner info'; av.classList.remove('oculto');
-    av.textContent = 'Mes nuevo: se copiaron los gastos fijos del mes anterior y la lectura anterior = lectura actual del mes previo.';
-  }
-  $('aguaImporte').value = b.servicios.aguaImporte === '' ? '' : b.servicios.aguaImporte;
-  $('aguaM3').value = b.servicios.aguaM3 === '' ? '' : b.servicios.aguaM3;
-  $('luzImporte').value = b.servicios.luzImporte === '' ? '' : b.servicios.luzImporte;
-  $('emision').value = b.servicios.emision || '';
-  $('vencimiento').value = b.servicios.vencimiento || '';
-  $('fondoAnterior').value = b.fondo.saldoAnterior === '' ? '' : b.fondo.saldoAnterior;
-  $('fondoGastos').value = b.fondo.gastosFondo === '' ? '' : b.fondo.gastosFondo;
-  $('fondoDetalle').value = b.fondo.detalle || '';
-  if (estado.logoDataUrl) $('logoPreview').innerHTML = '<img src="' + estado.logoDataUrl + '" height="40" alt="logo"> Logo listo';
-  else $('logoPreview').textContent = 'Sin logo (opcional)';
-  pintarLecturas();
-  pintarGastos();
-  pintarAjustes();
-}
-
-function pintarLecturas() {
-  var tb = $('tablaLecturas').querySelector('tbody');
-  tb.innerHTML = estado.borrador.lecturas.map(function (l, i) {
-    var ant = l.anterior === '' || l.anterior === null ? '' : l.anterior;
-    var act = l.actual === '' || l.actual === null ? '' : l.actual;
-    var cons = '';
-    var a = Calculo.parseNumero(act), p = Calculo.parseNumero(ant);
-    if (a !== null && p !== null) cons = Calculo.fmtNum(Calculo.redondear(a - p, 3), 3);
-    return '<tr data-i="' + i + '"><td><b>' + esc(l.unidad) + '</b></td><td>' + esc(l.propietario) + '</td>' +
-      '<td><input type="text" inputmode="decimal" class="lec-ant" value="' + esc(ant) + '"></td>' +
-      '<td><input type="text" inputmode="decimal" class="lec-act" value="' + esc(act) + '"><div class="aviso-campo"></div></td>' +
-      '<td class="cons">' + esc(cons) + '</td></tr>';
-  }).join('');
-  tb.querySelectorAll('input').forEach(function (inp) {
-    inp.addEventListener('input', function () {
-      var tr = inp.closest('tr'), i = +tr.getAttribute('data-i');
-      var ant = tr.querySelector('.lec-ant').value, act = tr.querySelector('.lec-act').value;
-      estado.borrador.lecturas[i].anterior = ant; estado.borrador.lecturas[i].actual = act;
-      var a = Calculo.parseNumero(act), p = Calculo.parseNumero(ant);
-      var av = tr.querySelector('.aviso-campo');
-      tr.querySelector('.lec-act').classList.remove('malo');
-      if (act && a === null) { av.textContent = 'número inválido'; tr.querySelector('.lec-act').classList.add('malo'); }
-      else if (a !== null && p !== null && a < p) { av.textContent = 'menor que la anterior'; tr.querySelector('.lec-act').classList.add('malo'); }
-      else av.textContent = '';
-      tr.querySelector('.cons').textContent = (a !== null && p !== null) ? Calculo.fmtNum(Calculo.redondear(a - p, 3), 3) : '';
-    });
-  });
-}
-
-function pintarGastos() {
-  var box = $('listaGastos');
-  box.innerHTML = estado.borrador.gastos.map(function (g, i) {
-    var montoDisabled = (g.tipo === 'LUZ' || g.tipo === 'AGUA_COMUN') ? ' disabled placeholder="auto"' : '';
-    return '<div class="fila" data-i="' + i + '">' +
-      '<input type="text" class="concepto" value="' + esc(g.concepto) + '" placeholder="Concepto">' +
-      '<input type="text" inputmode="decimal" class="monto" value="' + esc(g.monto === '' || g.monto === null ? '' : g.monto) + '"' + montoDisabled + '>' +
-      '<select class="tipo">' + Excel.TIPOS.map(function (t) {
-        return '<option value="' + t + '"' + (g.tipo === t ? ' selected' : '') + '>' + t + '</option>';
-      }).join('') + '</select>' +
-      '<button type="button" class="boton sec x" title="Quitar">×</button></div>';
-  }).join('');
-  box.querySelectorAll('.fila').forEach(function (fila) {
-    var i = +fila.getAttribute('data-i');
-    fila.querySelector('.concepto').oninput = function () { estado.borrador.gastos[i].concepto = this.value; };
-    fila.querySelector('.monto').oninput = function () { estado.borrador.gastos[i].monto = this.value; };
-    fila.querySelector('.tipo').onchange = function () {
-      estado.borrador.gastos[i].tipo = this.value;
-      var m = fila.querySelector('.monto');
-      if (this.value === 'LUZ' || this.value === 'AGUA_COMUN') { m.value = ''; m.disabled = true; estado.borrador.gastos[i].monto = ''; }
-      else m.disabled = false;
-    };
-    fila.querySelector('.x').onclick = function () { estado.borrador.gastos.splice(i, 1); pintarGastos(); };
-  });
-}
-$('btnAddGasto').onclick = function () {
-  estado.borrador.gastos.push({ concepto: '', monto: '', tipo: 'EXTRA', copiar: false });
-  pintarGastos();
-};
-
-function pintarAjustes() {
-  var box = $('listaAjustes');
-  var opts = estado.datos.deptos.map(function (d) { return '<option value="' + esc(d.unidad) + '">' + esc(d.unidad) + '</option>'; }).join('');
-  box.innerHTML = estado.borrador.ajustes.map(function (a, i) {
-    return '<div class="fila" data-i="' + i + '">' +
-      '<select class="unidad">' + opts.replace('value="' + esc(a.unidad) + '"', 'value="' + esc(a.unidad) + '" selected') + '</select>' +
-      '<input type="text" class="concepto" value="' + esc(a.concepto || '') + '" placeholder="Concepto">' +
-      '<input type="text" inputmode="decimal" class="monto" value="' + esc(a.monto === '' || a.monto === null ? '' : a.monto) + '" placeholder="Monto">' +
-      '<button type="button" class="boton sec x">×</button></div>';
-  }).join('');
-  // Fix selected: rebuild properly
-  box.innerHTML = estado.borrador.ajustes.map(function (a, i) {
-    var o = estado.datos.deptos.map(function (d) {
-      return '<option value="' + esc(d.unidad) + '"' + (String(d.unidad) === String(a.unidad) ? ' selected' : '') + '>' + esc(d.unidad) + '</option>';
-    }).join('');
-    return '<div class="fila" data-i="' + i + '"><select class="unidad">' + o + '</select>' +
-      '<input type="text" class="concepto" value="' + esc(a.concepto || '') + '" placeholder="Concepto">' +
-      '<input type="text" inputmode="decimal" class="monto" value="' + esc(a.monto === '' || a.monto === null ? '' : a.monto) + '">' +
-      '<button type="button" class="boton sec x">×</button></div>';
-  }).join('');
-  box.querySelectorAll('.fila').forEach(function (fila) {
-    var i = +fila.getAttribute('data-i');
-    fila.querySelector('.unidad').onchange = function () { estado.borrador.ajustes[i].unidad = this.value; };
-    fila.querySelector('.concepto').oninput = function () { estado.borrador.ajustes[i].concepto = this.value; };
-    fila.querySelector('.monto').oninput = function () { estado.borrador.ajustes[i].monto = this.value; };
-    fila.querySelector('.x').onclick = function () { estado.borrador.ajustes.splice(i, 1); pintarAjustes(); };
-  });
-}
-$('btnAddAjuste').onclick = function () {
-  estado.borrador.ajustes.push({ unidad: estado.datos.deptos[0].unidad, concepto: 'Crédito a favor', monto: '' });
-  pintarAjustes();
-};
+$('btnVolver2').onclick = function () { irA(1); };
 
 $('logoFile').onchange = function () {
   var f = this.files && this.files[0]; if (!f) return;
@@ -255,25 +141,47 @@ $('logoFile').onchange = function () {
     $('logoPreview').innerHTML = '<img src="' + r.dataUrl + '" height="40" alt="logo"> Logo listo';
   }).catch(function (e) { alert(e.message || e); });
 };
-
-function recolectarPaso2() {
-  var b = estado.borrador;
-  b.servicios.aguaImporte = $('aguaImporte').value;
-  b.servicios.aguaM3 = $('aguaM3').value;
-  b.servicios.luzImporte = $('luzImporte').value;
-  b.servicios.emision = $('emision').value;
-  b.servicios.vencimiento = $('vencimiento').value;
-  b.fondo.saldoAnterior = $('fondoAnterior').value;
-  b.fondo.gastosFondo = $('fondoGastos').value;
-  b.fondo.detalle = $('fondoDetalle').value;
+function pintarLogo() {
+  if (estado.logoDataUrl) $('logoPreview').innerHTML = '<img src="' + estado.logoDataUrl + '" height="40" alt="logo"> Logo del Excel';
+  else $('logoPreview').textContent = 'Sin logo (opcional)';
 }
 
-$('btnAPaso3').onclick = function () {
-  recolectarPaso2();
-  irA(3);
-  pintarEstadoArchivos();
-};
-$('btnVolver2').onclick = function () { irA(2); };
+function fmtFechaIso(iso) { var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + '/' + m[2] + '/' + m[1] : '—'; }
+
+function htmlResumen(b, res) {
+  var S = Calculo.fmtSoles, N = Calculo.fmtNum;
+  var filas = res.unidades.map(function (u) {
+    return '<tr><td><b>' + esc(u.unidad) + '</b></td><td>' + esc(u.propietario) + '</td>' +
+      '<td class="m">' + N(u.anterior, 3) + '</td><td class="m">' + N(u.actual, 3) + '</td><td class="m">' + N(u.consumo, 3) + '</td>' +
+      '<td class="m">' + S(u.aguaPrivadaFinal) + '</td><td class="m">' + S(u.comun) + '</td>' +
+      '<td class="m">' + (u.totalAjustes ? S(u.totalAjustes) : '') + '</td><td class="m"><b>' + S(u.total) + '</b></td></tr>';
+  }).join('');
+  var gastos = res.gastos.map(function (g) {
+    return '<tr><td>' + esc(g.concepto) + (g.tipo === 'EXTRA' ? ' <span class="pill aviso">extra</span>' : '') + '</td><td class="m">' + S(g.monto) + '</td><td class="m">' + S(g.porUnidad) + '</td></tr>';
+  }).join('');
+  return '<div class="resumen-cab">' +
+      '<div class="dato"><span>Mes</span><b>' + esc(res.nombreMes + ' ' + res.anio) + '</b></div>' +
+      '<div class="dato"><span>Agua (recibo)</span><b>' + S(res.agua.importe) + '</b><small>' + N(res.agua.m3, 0) + ' m³ · S/ ' + N(res.agua.precioM3, 4) + ' por m³</small></div>' +
+      '<div class="dato"><span>Luz (recibo)</span><b>' + S(res.luz.importe) + '</b></div>' +
+      '<div class="dato"><span>Emisión · Vence</span><b>' + fmtFechaIso(b.servicios.emision) + '</b><small>vence ' + fmtFechaIso(b.servicios.vencimiento) + '</small></div>' +
+      '<div class="dato"><span>Total del mes</span><b>' + S(res.totalFacturado) + '</b></div>' +
+      '<div class="dato"><span>Fondo de contingencia</span><b>' + S(res.fondo.saldo) + '</b><small>antes ' + S(res.fondo.saldoAnterior) + '</small></div>' +
+    '</div>' +
+    '<h3 class="sub-titulo">Lecturas y total por departamento</h3>' +
+    '<div class="tabla-wrap"><table class="datos resumen-tabla"><thead><tr><th>Dpto</th><th>Propietario</th><th class="m">Anterior</th><th class="m">Actual</th><th class="m">Consumo m³</th>' +
+    '<th class="m">Agua</th><th class="m">Común</th><th class="m">Ajuste</th><th class="m">Total</th></tr></thead><tbody>' + filas + '</tbody></table></div>' +
+    '<p class="mini">Agua común: ' + N(res.agua.m3Comun, 3) + ' m³ = ' + S(res.agua.comun) + (res.agua.unidadAjuste ? ' · redondeo de ' + S(res.agua.diferenciaRedondeo) + ' al Dpto ' + esc(res.agua.unidadAjuste) : '') + '</p>' +
+    '<h3 class="sub-titulo">Gastos comunes</h3>' +
+    '<div class="tabla-wrap"><table class="datos resumen-tabla gastos-tabla"><thead><tr><th>Concepto</th><th class="m">Total edificio</th><th class="m">Por dpto</th></tr></thead><tbody>' + gastos +
+    '<tr><td><b>Total por dpto (común)</b></td><td class="m"><b>' + S(res.totalComun) + '</b></td><td class="m"><b>' + S(res.comunPorUnidad) + '</b></td></tr></tbody></table></div>';
+}
+
+/** Excel sin pestaña "Mes a facturar": descarga el mismo Excel con la pestaña agregada (para llenarla). */
+function descargarConHojaMes(mes) {
+  Excel.escribirHojaMes(estado.wb, estado.datos, mes);
+  var base = estado.nombreArchivo.replace(/\.xlsx$/i, '');
+  XLSX.writeFile(estado.wb, base + ' (con Mes a facturar).xlsx');
+}
 
 /* ---------------- Paso 3: fotos ---------------- */
 var uid = 0;
@@ -361,7 +269,6 @@ function pintarEstadoArchivos() {
 
 /* ---------------- Generar ---------------- */
 $('btnGenerar').onclick = function () {
-  recolectarPaso2();
   var aplicado = Excel.aplicarBorrador(estado.datos, estado.borrador);
   var rev = Excel.revisar(estado.borrador, aplicado.res, {
     medidor: estado.archivos.medidor, agua: estado.archivos.agua, luz: estado.archivos.luz
@@ -404,6 +311,8 @@ function ejecutarGeneracion(aplicado) {
     aplicado.datos.logo = estado.logoDataUrl;
   }
   Excel.escribirMes(wb, aplicado.datos, res.mes);
+  // Deja la pestaña "Mes a facturar" lista para el mes siguiente (lecturas anteriores, gastos fijos, saldo del fondo)
+  Excel.escribirHojaMes(wb, aplicado.datos, Calculo.mesSiguiente(res.mes));
   // Actualiza Config.NUM_DPTOS si hace falta
   var excelBytes = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   var archivos = {
@@ -431,7 +340,7 @@ function ejecutarGeneracion(aplicado) {
     $('panelResultado').innerHTML =
       '<div class="banner ok"><b>✔ Listo:</b> ' + out.resumen.length + ' recibos de ' + esc(res.nombreMes + ' ' + res.anio) +
       '. Se descargó <b>' + esc(out.nombre) + '</b> (PDF + Excel actualizado).<br>' +
-      'Guarda el Excel del ZIP: es el que debes subir el próximo mes.</div>' +
+      'Guarda el Excel del ZIP: ya trae la pestaña “Mes a facturar” lista para ' + esc(Calculo.nombreMes(Calculo.mesSiguiente(res.mes)) + ' ' + Calculo.partesMes(Calculo.mesSiguiente(res.mes)).anio) + '. Llénala el próximo mes y súbelo aquí.</div>' +
       '<div class="tabla-wrap"><table class="datos resumen-tabla"><thead><tr><th>Dpto</th><th>Propietario</th><th class="m">Total</th></tr></thead><tbody>' +
       filas +
       '<tr><td colspan="2"><b>Total facturado</b></td><td class="m"><b>' + esc(Calculo.fmtSoles(res.totalFacturado)) + '</b></td></tr>' +
@@ -586,7 +495,6 @@ window.__pintarEnvio = pintarEnvio;
 
 // Expone para pruebas (Playwright)
 window.__RecibosApp = {
-  estado: estado, cargarExcel: cargarExcel, abrirPaso2: abrirPaso2, agregarArchivos: agregarArchivos,
-  recolectarPaso2: recolectarPaso2, irA: irA
+  estado: estado, cargarExcel: cargarExcel, agregarArchivos: agregarArchivos, irA: irA
 };
 })();
